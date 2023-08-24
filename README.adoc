@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+:doctype: article
+
+== SQLPage
+
+Learning to use SLQPage to create applications (see https://sql.ophir.dev/index.sql)
+
