@@ -1,0 +1,22 @@
+ARG PG_IMAGE_REF
+FROM docker.io/${PG_IMAGE_REF} AS build
+
+# Password for app_exec USER, that only has accesss to call procedures and functions
+ARG PG_EXEC_PASS
+
+# Number of seed customers to generate
+ARG PG_NUM_SEED_CUSTOMERS
+
+# Dir for environment source files
+ARG PG_SRC_ENV_DIR=
+
+# Copy all sql scripts
+COPY src/* /docker-entrypoint-initdb.d
+
+# Copy environment specific files, if any
+#COPY ${PG_SRC_ENV_DIR}/* /docker-entrypoint-initdb.d
+
+# Replace every occurrence of ${APP_EXEC_PASS} in copied sql scripts with value of build arg PG_EXEC_PASS
+# Note that ${PG_EXEC_PASS} cannot be in quotes, or it will be passed as the literal sequence ${PG_EXEC_PASS}
+RUN find /docker-entrypoint-initdb.d -type f -name '*.sql' -exec sed -i 's,[$][{]PG_EXEC_PASS[}],'${PG_EXEC_PASS}',g' '{}' \;
+RUN find /docker-entrypoint-initdb.d -type f -name '*.sql' -exec sed -i 's,[$][{]PG_NUM_SEED_CUSTOMERS[}],'${PG_NUM_SEED_CUSTOMERS}',g' '{}' \;
