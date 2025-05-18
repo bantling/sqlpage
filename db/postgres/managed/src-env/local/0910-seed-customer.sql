@@ -1,10 +1,4 @@
-/*
-DO $$
-BEGIN
-  RAISE NOTICE 'PG_MANAGED_NUM_SEED_CUSTOMERS = ${PG_MANAGED_NUM_SEED_CUSTOMERS}'; -- Build variable
-END;
-$$ LANGUAGE plpgsql;
-*/
+SET log_min_messages = NOTICE;
 
 -- Seed addresses in a simple way that is not super accurate, but good enough and easy to understand
 DO $$
@@ -20,7 +14,7 @@ DECLARE
   -- The business address type relid (null for personal address)
   V_BUSINESS_ADDRESS_TYPE_RELID BIGINT;
 
-  -- The country relid
+  -- The country and region values
   V_COUNTRY_RELID BIGINT;
   V_COUNTRY_CODE2 CHAR(2);
   V_COUNTRY_HAS_REGIONS BOOL;
@@ -29,6 +23,8 @@ DECLARE
   -- The region relid (null for countries with no regions)
   V_REGION_RELID BIGINT;
 BEGIN
+  RAISE NOTICE 'C_NUM_ROWS = %', C_NUM_ROWS;
+
   FOR V_COUNT IN 1 .. C_NUM_ROWS LOOP
     -- Choose personal addresses 60% of the time, businesses 40%
     V_IS_PERSONAL := random() <= 0.60;
@@ -65,6 +61,12 @@ BEGIN
        ORDER BY RANDOM()
        LIMIT 1;
     END IF;
+
+    RAISE NOTICE 'V_BUSINESS_ADDRESS_TYPE_RELID = %', V_BUSINESS_ADDRESS_TYPE_RELID;
+    RAISE NOTICE 'V_COUNTRY_RELID = %'              , V_COUNTRY_RELID;
+    RAISE NOTICE 'V_COUNTRY_HAS_REGIONS = %'        , V_COUNTRY_HAS_REGIONS;
+    RAISE NOTICE 'V_REGION_RELID = %'               , V_REGION_RELID;
+    RAISE NOTICE 'V_REGION_CODE = %'                , V_REGION_CODE;
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;

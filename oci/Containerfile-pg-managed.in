@@ -8,13 +8,13 @@ ARG PG_MANAGED_EXEC_PASS
 ARG PG_MANAGED_NUM_SEED_CUSTOMERS
 
 # Dir for environment source files
-ARG PG_SRC_ENV_DIR=
+ARG PG_MANAGED_SRC_ENV_DIR=
 
 # Copy all sql scripts
 COPY src/* /docker-entrypoint-initdb.d
 
-# Copy environment specific files, if any
-#COPY ${PG_SRC_ENV_DIR}/* /docker-entrypoint-initdb.d
+# Copy all sql scripts
+#COPY ${PG_MANAGED_SRC_ENV_DIR}/* /docker-entrypoint-initdb.d
 
 # Replace every occurrence of variables in copied sql scripts with value of build arg
 # - PG_MANAGED_EXEC_PASS         : the password for the managed_app_exec role that the app will login as

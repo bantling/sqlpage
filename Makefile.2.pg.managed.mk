@@ -114,6 +114,11 @@ pg-managed-oci-run:
 	echo; \
 	echo "Database $(PG_MANAGED_DEPLOY_REF) started"
 
+# Display logs for running postgres container
+.PHONY: pg-managed-oci-logs
+pg-managed-oci-logs:
+	podman logs $(PG_MANAGED_DEPLOY_NAME) | more
+
 # Run psql inside running postgres container
 .PHONY: pg-managed-oci-psql
 pg-managed-oci-psql:
