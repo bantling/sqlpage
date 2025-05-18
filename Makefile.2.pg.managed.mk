@@ -61,9 +61,9 @@ pg-managed-oci-pull:
 	  podman pull $(PG_MANAGED_IMAGE_REF); \
 	}
 
-# Always build docker/.Containerfile-postgres-managed in case args have changed
-.PHONY: docker/.Containerfile-postgres-managed
-docker/.Containerfile-postgres-managed: docker/Containerfile-postgres-managed.in
+# Always build docker/.Containerfile-pg-managed in case args have changed
+.PHONY: docker/.Containerfile-pg-managed
+docker/.Containerfile-pg-managed: docker/Containerfile-pg-managed.in
 	echo ">>> Generating $@"
 	cp $< $@
 	if [ -n "$(PG_MANAGED_SRC_ENV_ARG)" ]; then echo "Include src-env"; sed 's,#COPY,COPY,' $@ > $@.tmp; mv $@.tmp $@; fi
@@ -71,7 +71,7 @@ docker/.Containerfile-postgres-managed: docker/Containerfile-postgres-managed.in
 # Build oci image
 # Pruning removes the unnamed initial stage images of multi stage builds
 .PHONY: pg-managed-oci-build
-pg-managed-oci-build: docker/.Containerfile-postgres-managed
+pg-managed-oci-build: docker/.Containerfile-pg-managed
 	echo ">>> Building postgres managed image"
 	podman build \
 	  --build-arg "PG_MANAGED_IMAGE_REF=$(PG_MANAGED_IMAGE_REF)" \
