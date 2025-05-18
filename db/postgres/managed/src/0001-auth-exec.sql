@@ -19,8 +19,7 @@ SELECT 'CREATE ROLE managed_app_exec PASSWORD ''${PG_EXEC_PASS}'''
 -- - It only has latest code
 -- - No old overloads exist that are no longer needed
 --
--- There MUST NOT exist any objects outside this schema that depend on objects in this schema.
--- Any such objects will also be dropped.
+-- If any objects exist outside this schema that depend on objects in this schema, they will also be dropped.
 -- See https://www.postgresql.org/docs/current/sql-dropschema.html.
 DROP SCHEMA IF EXISTS managed_code CASCADE;
 CREATE SCHEMA IF NOT EXISTS managed_code AUTHORIZATION managed_app_exec;

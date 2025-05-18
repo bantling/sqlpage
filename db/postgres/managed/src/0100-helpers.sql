@@ -14,7 +14,7 @@ BEGIN
     WHEN LENGTH(COALESCE(P_MSG, '')) = 0 THEN
       RAISE EXCEPTION 'P_MSG cannot be null or empty';
 
-    WHEN NOT COALESCE(P_TEST, FALSE) THEN
+    WHEN P_TEST IS DISTINCT FROM TRUE THEN
       RAISE EXCEPTION '%', P_MSG;
 
     ELSE
@@ -82,7 +82,7 @@ DECLARE
 BEGIN
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST(NULL, NULL::BOOLEAN);
+    SELECT managed_code.TEST(NULL, NULL::BOOLEAN); -- Cast NULL to boolean to force postgres into using boolean overload
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -162,7 +162,7 @@ BEGIN
   -- P_ERR cannot be null
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST(NULL, NULL::TEXT);
+    SELECT managed_code.TEST(NULL, NULL::TEXT); -- Cast NULL to text to force postgres into using text overload
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -210,7 +210,7 @@ BEGIN
   -- P_QUERY cannot be empty
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('ERR', NULL::TEXT);
+    SELECT managed_code.TEST('ERR', '');
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -274,20 +274,20 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test IIF
-SELECT DISTINCT *
+SELECT *
   FROM (
     SELECT managed_code.TEST('P_TRUE_VAL and P_FALSE_VAL cannot both be null', 'SELECT managed_code.IIF(TRUE, NULL::TEXT, NULL)')
      UNION ALL
     SELECT managed_code.TEST(format('managed_code.IIF(%s, %s, %s) must return %s', expr, tval, fval, res), managed_code.IIF(expr, tval, fval) IS NOT DISTINCT FROM res)
       FROM (VALUES
-              (TRUE , NULL::TEXT, 'b' , NULL)
-             ,(FALSE, NULL::TEXT, 'b' , 'b' )
+              (TRUE , NULL, 'b' , NULL)
+             ,(FALSE, NULL, 'b' , 'b' )
              
-             ,(TRUE , 'a'::TEXT , NULL, 'a' )
-             ,(FALSE, 'a'::TEXT , NULL, NULL)
+             ,(TRUE , 'a', NULL, 'a' )
+             ,(FALSE, 'a', NULL, NULL)
              
-             ,(TRUE , 'a'::TEXT , 'b' , 'a' )
-             ,(FALSE, 'a'::TEXT , 'b' , 'b' )
+             ,(TRUE , 'a', 'b' , 'a' )
+             ,(FALSE, 'a', 'b' , 'b' )
            ) AS t (expr, tval, fval, res)
   ) t;
 ---------------------------------------------------------------------------------------------------
@@ -310,7 +310,7 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test NEMPTY_WS
-SELECT DISTINCT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT DISTINCT FROM res) nempty_ws
+SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT DISTINCT FROM res) nempty_ws
   FROM (VALUES
           ('NEMPTY_WS must return NULL 1' , ARRAY[                                             ]::TEXT[], NULL     )
          ,('NEMPTY_WS must return NULL 2' , ARRAY[NULL                                         ]::TEXT[], NULL     )
@@ -334,142 +334,22 @@ SELECT DISTINCT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args
 
 
 ---------------------------------------------------------------------------------------------------
--- JSONB_ARRAY_RANDOM returns a random subset of elements of a jsonb array
--- P_ARRAY     : The array to return random elements of
--- P_SUBSET_MIN: The minimum number of elements to return (NULL means a single element)
--- P_SUBSET_MAX: The maximum number of elements to return (NULL means the number of elements in the array)
---
--- The default (P_SUBSET_MIN IS NULL) is to select a single random element and return it as is
--- 
--- If P_SUBSET_MIN is > 0, then a jsonb array is returned, containing a random subset of elements,
--- where the subset size is any size from P_SUBSET_MIN up to P_SUBSET_MAX inclusive
-
--- P_ARRAY      must be an array
--- P_SUBSET_MIN cannot be 0
--- P_SUBSET_MAX cannot be 0
--- If P_SUBSET_MAX is NULL or > array length, then P_SUBSET_MAX = array length 
--- If P_SUBSET_MAX < P_SUBSET_MIN, then P_SUBSET_MAX = P_SUBSET_MIN
----------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION managed_code.JSONB_ARRAY_RANDOM(P_ARRAY JSONB, P_SUBSET_MIN INT = NULL, P_SUBSET_MAX INT = NULL) RETURNS JSONB AS
+-- RANDOM_INT: produce a random integer in a specified closed range
+-- P_MIN     : The minimum value
+-- P_MAX     : The maximum value
+CREATE OR REPLACE FUNCTION managed_code.RANDOM_INT(P_MIN INT = 1, P_MAX INT = 2_147_483_647) RETURNS INT AS
 $$
-DECLARE
-  V_MAX_COUNT       INT;
-  
-  V_LEN             INT;
-  V_ARRAY_REMAINING JSONB;
-  V_RES             JSONB;
-  V_COUNT           INT;
-  V_IDX             INT;
-  V_ELEM            JSONB;
-BEGIN
-  IF NOT jsonb_typeof(P_ARRAY) = 'array' THEN
-    RAISE EXCEPTION 'P_ARRAY must be a jsonb array, not a jsonb %', jsonb_typeof(P_ARRAY);
-  END IF;
-  
-  IF P_SUBSET_MIN < 1 THEN
-    RAISE EXCEPTION 'P_SUBSET_MIN cannot be < 1';
-  END IF;
-  
-  IF P_SUBSET_MAX < 1 THEN
-    RAISE EXCEPTION 'P_SUBSET_MAX cannot be < 1';
-  END IF;
-  
-  V_LEN := jsonb_array_length(P_ARRAY);
-  
-  ---- Simple case of returning a single random element as is ----
-  
-  IF P_SUBSET_MIN IS NULL THEN
-    V_IDX := (random() * (V_LEN - 1))::INT;
-    V_RES := P_ARRAY -> V_IDX;
-    -- RAISE NOTICE 'RANDOM ELEMENT = %, %, %, %', V_LEN, V_IDX, jsonb_typeof(V_RES), V_RES;
-    RETURN V_RES;
-  END IF;
-  
-  ---- Complex case of returning a subset of one or more elements as  an array ----
-  
-  P_SUBSET_MAX := CASE
-      WHEN P_SUBSET_MAX IS NULL        THEN V_LEN
-      WHEN P_SUBSET_MAX < P_SUBSET_MIN THEN P_SUBSET_MIN
-      ELSE P_SUBSET_MAX
-  END CASE;
-  
-  -- Get max count and array length
-  V_MAX_COUNT := P_SUBSET_MAX;
- 
-  -- Ensure that if V_MAX is NULL or > array length, it is set to the array length
-  IF (V_MAX_COUNT IS NULL) OR (V_MAX_COUNT > V_LEN) THEN
-    V_MAX_COUNT := V_LEN;
-  END IF;
-   
-  -- V_ARRAY_REMAINING contains array elements that have not been chosen yet
-  V_ARRAY_REMAINING := P_ARRAY;
-  
-  -- V_RES is the array we're going to return with the random chosen elements in it
-  V_RES = '[]'::jsonb;
-  
-  -- Loop through the closed range [0, random upper index >= P_SUBSET_MIN and <= V_MAX_COUNT]
-  FOR V_COUNT IN 1 .. (P_SUBSET_MIN + (random() * (V_MAX_COUNT - P_SUBSET_MIN))::INT) LOOP
-    -- Select a random element index
-    V_IDX := (random() * (V_LEN - 1))::INT;
-    
-    -- Add the selected index from the remaining elements to the result
-    V_RES := V_RES || (V_ARRAY_REMAINING -> V_IDX);
-    
-    -- Remove the selected index from the remaining elements
-    V_ARRAY_REMAINING := V_ARRAY_REMAINING - V_IDX;
-     
-    -- Adjust the length
-    V_LEN := V_LEN - 1;
-  END LOOP;
-  
-  RETURN V_RES;
-END;
-$$ LANGUAGE plpgsql VOLATILE;
+  SELECT ROUND(RANDOM() * (COALESCE(P_MAX, 2_147_483_647) - COALESCE(P_MIN, 1)) + P_MIN)
+$$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
--- Test JSONB_ARRAY_RANDOM simple case of one random element
--- SELECT managed_code.JSONB_ARRAY_RANDOM('[1]'::JSONB) from generate_series(1, 10);
--- SELECT managed_code.JSONB_ARRAY_RANDOM('[2,4,6,8]'::JSONB) from generate_series(1, 10);
-SELECT DISTINCT * FROM (
-  SELECT managed_code.TEST('P_ARRAY must be a jsonb array, not a jsonb number', 'SELECT managed_code.JSONB_ARRAY_RANDOM(''1''::JSONB)')
-   UNION ALL
-  SELECT managed_code.TEST('P_ARRAY is null', managed_code.JSONB_ARRAY_RANDOM(NULL) IS NULL)
-   UNION ALL
-  SELECT managed_code.TEST('P_ARRAY is empty', managed_code.JSONB_ARRAY_RANDOM(jsonb_build_array()) IS NULL)
-   UNION ALL
-  SELECT managed_code.TEST(format('JSONB_ARRAY_RANDOM(%s) must return a value between %s and %s', a, l, h), managed_code.JSONB_ARRAY_RANDOM(a)::INT BETWEEN l AND h)
-    FROM (VALUES
-           (jsonb_build_array(1), 1, 1),
-           (jsonb_build_array(2), 2, 2),
-           
-           (jsonb_build_array(2, 3), 2, 3),
-           (jsonb_build_array(2, 3), 2, 3),
-           
-           (jsonb_build_array(4, 5, 6, 7), 4, 7),
-           (jsonb_build_array(4, 5, 6, 7), 4, 7),
-           (jsonb_build_array(4, 5, 6, 7), 4, 7),
-           (jsonb_build_array(4, 5, 6, 7), 4, 7)
-         ) AS t(a, l, h)
-) t;
-
--- Test JSONB_ARRAY_RANDOM complex case of a random subset of elements
-SELECT DISTINCT * FROM (
-  SELECT managed_code.TEST('P_SUBSET_MIN cannot be < 1', 'SELECT managed_code.JSONB_ARRAY_RANDOM(NULL, 0)')
-   UNION ALL
-  SELECT managed_code.TEST('P_SUBSET_MAX cannot be < 1', 'SELECT managed_code.JSONB_ARRAY_RANDOM(NULL, 1, 0)')
-   UNION ALL
-  SELECT managed_code.TEST('Random 1 element', jsonb_array_length(managed_code.JSONB_ARRAY_RANDOM('[2,4,6,8]',1,1)) = 1)
-    FROM generate_series(1, 100)
-   UNION ALL
-  SELECT managed_code.TEST('Random 1 element', (managed_code.JSONB_ARRAY_RANDOM('[2,4,6,8]',1,1) -> 0)::INT IN (2,4,6,8))
-   FROM generate_series(1, 100)
-   UNION ALL
-  SELECT managed_code.TEST('Random 3 elements', jsonb_array_length(managed_code.JSONB_ARRAY_RANDOM('[2,4,6,8]',1,3)) BETWEEN 1 AND 3)
-    FROM generate_series(1, 100)
-   UNION ALL
-  SELECT managed_code.TEST('Random all elements', jsonb_array_length(managed_code.JSONB_ARRAY_RANDOM('[2,4,6,8]',1)) BETWEEN 1 AND 4)
-    FROM generate_series(1, 100)
-) t;
-
+-- Test RANDOM_INT
+SELECT managed_code.TEST(
+         'RANDOM_INT(5, 20) must return range of [5, 20]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(5, 20)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+       )
+  FROM generate_series(1, 1000)
+ ORDER BY 1;
+---------------------------------------------------------------------------------------------------
 
 
 
@@ -484,7 +364,7 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test TO_8601
-SELECT DISTINCT managed_code.TEST(msg, managed_code.IIF(ARRAY_LENGTH(ARG, 1) = 0, managed_code.TO_8601(), managed_code.TO_8601(ARG[1])) = res)
+SELECT managed_code.TEST(msg, managed_code.IIF(ARRAY_LENGTH(ARG, 1) = 0, managed_code.TO_8601(), managed_code.TO_8601(ARG[1])) = res)
   FROM (VALUES
           ('TO_8601() must return NOW'                   , ARRAY[]::TIMESTAMP[]                              , TO_CHAR(NOW() AT TIME ZONE 'UTC'                   , 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
          ,('TO_8601(NULL) must return NOW'               , ARRAY[NULL]::TIMESTAMP[]                          , TO_CHAR(NOW() AT TIME ZONE 'UTC'                   , 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
@@ -568,7 +448,7 @@ SELECT DISTINCT * FROM (
 CREATE OR REPLACE FUNCTION managed_code.ID_TO_RELID(P_ID VARCHAR(11)) RETURNS BIGINT AS
 $$
 DECLARE
-  --                                              12345678901
+  --                                               12345678901
   C_LPAD_ID  CONSTANT CHAR(11) := LPAD(P_ID, 11, '00000000000') COLLATE "C";
   C_LPAD_MIN CONSTANT CHAR(11) :=                '00000000001'  COLLATE "C";
   C_LPAD_MAX CONSTANT CHAR(11) :=                'AzL8n0Y58m7'  COLLATE "C";

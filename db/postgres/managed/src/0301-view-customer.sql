@@ -2,18 +2,18 @@
 CREATE OR REPLACE VIEW managed_views.customer_person_address AS
 SELECT jsonb_build_object(
           'id'          ,managed_code.RELID_TO_ID(cp.relid)
-         ,'version'     ,cpb.version
-         ,'created'     ,cpb.created
-         ,'changed'     ,cpb.modified
+         ,'version'     ,cp.version
+         ,'created'     ,cp.created
+         ,'changed'     ,cp.modified
          ,'first_name'  ,cp.first_name
          ,'middle_name' ,cp.middle_name
          ,'last_name'   ,cp.last_name
          ,'address'    ,(SELECT jsonb_strip_nulls(
                                   jsonb_build_object(
                                      'id'           ,managed_code.RELID_TO_ID(a.relid)
-                                    ,'version'      ,ab.version
-                                    ,'created'      ,ab.created
-                                    ,'changed'      ,ab.modified
+                                    ,'version'      ,a.version
+                                    ,'created'      ,a.created
+                                    ,'changed'      ,a.modified
                                     ,'city'         ,a.city
                                     ,'address'      ,a.address
                                     ,'country'      ,c.code_2
@@ -22,8 +22,6 @@ SELECT jsonb_build_object(
                                   )
                                 ) address
                             FROM managed_tables.address a
-                            JOIN managed_tables.base ab
-                              ON ab.relid = a.relid
                             JOIN managed_tables.country c
                               ON c.relid = a.country_relid
                             LEFT
@@ -33,8 +31,6 @@ SELECT jsonb_build_object(
                         )
        ) customer_person_address
   FROM managed_tables.customer_person cp
-  JOIN managed_tables.base cpb
-    ON cpb.relid = cp.relid
  ORDER
     BY  cp.last_name
        ,cp.first_name
@@ -44,18 +40,18 @@ SELECT jsonb_build_object(
 CREATE OR REPLACE VIEW managed_views.customer_business_address AS
 SELECT jsonb_build_object(
           'id'         ,managed_code.RELID_TO_ID(cb.relid)
-         ,'version'    ,cbb.version
-         ,'created'    ,cbb.created
-         ,'changed'    ,cbb.modified
+         ,'version'    ,cb.version
+         ,'created'    ,cb.created
+         ,'changed'    ,cb.modified
          ,'name'       ,cb.name
          ,'addresses'  ,(SELECT jsonb_agg(
                                   jsonb_strip_nulls(
                                     jsonb_build_object(
                                        'id'          ,managed_code.RELID_TO_ID(a.relid)
                                       ,'type'        ,t.name
-                                      ,'version'     ,ab.version
-                                      ,'created'     ,ab.created
-                                      ,'changed'     ,ab.modified
+                                      ,'version'     ,a.version
+                                      ,'created'     ,a.created
+                                      ,'changed'     ,a.modified
                                       ,'city'        ,a.city
                                       ,'address_1'   ,a.address
                                       ,'address_2'   ,a.address_2
@@ -69,8 +65,6 @@ SELECT jsonb_build_object(
                                      BY t.ord
                                 ) address
                            FROM managed_tables.address a
-                           JOIN managed_tables.base ab
-                             ON ab.relid = a.relid
                            JOIN managed_tables.country c
                              ON c.relid = a.country_relid
                            LEFT
@@ -79,12 +73,10 @@ SELECT jsonb_build_object(
                            JOIN managed_tables.address_type t
                              ON t.relid = a.address_type_relid
                            JOIN managed_tables.customer_business_address_jt cba
-                             ON cba.business_relid = cb.relid
+                             ON cba.business_relid = c.relid
                             AND cba.address_relid  = a.relid
                         )
        ) customer_business_address
   FROM managed_tables.customer_business cb
-  JOIN managed_tables.base cbb
-    ON cbb.relid = cb.relid
  ORDER
     BY cb.name;

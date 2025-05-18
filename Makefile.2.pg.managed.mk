@@ -24,7 +24,7 @@ PG_MANAGED_SRC_ENV_ARG := $(if $(PG_MANAGED_SRC_ENV),--build-arg "PG_MANAGED_SRC
 PG_MANAGED_DB_NAME            := pg_managed
 PG_MANAGED_PASS               := pg_managed_pass
 PG_MANAGED_EXEC_PASS          := pg_managed_exec_pass
-PG_MANAGED_NUM_SEED_CUSTOMERS := 50
+PG_MANAGED_NUM_SEED_CUSTOMERS := 1
 
 #### Targets
 
@@ -66,7 +66,7 @@ pg-managed-oci-pull:
 oci/.Containerfile-pg-managed: oci/Containerfile-pg-managed.in
 	echo ">>> Generating $@"
 	cp $< $@
-	if [ -n "$(PG_MANAGED_SRC_ENV_ARG)" ]; then echo "Include src-env"; sed 's,#COPY,COPY,' $@ > $@.tmp; mv $@.tmp $@; fi
+	if [ -n "$(PG_MANAGED_SRC_ENV_ARG)" ]; then echo "Include $(PG_MANAGED_SRC_ENV_DIR)"; sed 's,#COPY,COPY,' $@ > $@.tmp; mv $@.tmp $@; fi
 
 # Build oci image
 # Pruning removes the unnamed initial stage images of multi stage builds

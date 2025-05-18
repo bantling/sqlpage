@@ -1,6 +1,12 @@
 -- Seed data for country and region managed_tables
 -- See https://www.iban.com/country-codes for 2 and 3 char country codes
 -- See https://en.wikipedia.org/wiki/ISO_3166-2 for countries and region codes
+--
+-- If a country changes name, two steps are required:
+-- 1. Write an update query before the hard-coded data
+-- 2. Update the hard-coded data with the new data
+
+-- Hard-coded country data
 WITH COUNTRY_DATA AS (
   SELECT s.*
         ,ROW_NUMBER() OVER() AS ord
@@ -13,8 +19,6 @@ WITH COUNTRY_DATA AS (
             name              , code_2, code_3, has_regions, has_mailing_code, mailing_code_match                               , mailing_code_format
          )
 )
--- SELECT * FROM COUNTRY_DATA;
-
 INSERT INTO managed_tables.country(
    description
   ,terms
@@ -27,16 +31,33 @@ INSERT INTO managed_tables.country(
   ,mailing_code_format
   ,ord
 )
-SELECT c.name                           AS description
+SELECT c.name                                                               AS description
       ,TO_TSVECTOR('english', c.name || ' ' || c.code_2 || ' ' || c.code_3) AS terms
       ,c.*
   FROM COUNTRY_DATA c
     ON CONFLICT(name) DO
 UPDATE
-   SET                ord  = excluded.ord
- WHERE managed_tables.country.ord != excluded.ord;
+   SET description                 = excluded.name
+      ,terms                       = TO_TSVECTOR('english', excluded.name || ' ' || excluded.code_2 || ' ' || excluded.code_3)
+      ,code_2                      = excluded.code_2
+      ,code_3                      = excluded.code_3
+      ,has_regions                 = excluded.has_regions
+      ,has_mailing_code            = excluded.has_mailing_code
+      ,mailing_code_match          = excluded.mailing_code_match
+      ,ord                         = excluded.ord
+ WHERE country.code_2             != excluded.code_2
+    OR country.code_3             != excluded.code_3
+    OR country.has_regions        != excluded.has_regions
+    OR country.has_mailing_code   != excluded.has_mailing_code
+    OR country.mailing_code_match != excluded.mailing_code_match
+    OR country.ord                != excluded.ord;
 
--- Regions
+--
+-- If a region changes name, two steps are required:
+-- 1. Write an update query before the hard-coded data
+-- 2. Update the hard-coded data with the new details
+--
+-- Hard-coded region data
 WITH CA_REGION_DATA AS (
   SELECT (SELECT relid FROM managed_tables.country WHERE code_2 = 'CA') AS country_relid
         ,s.*
@@ -58,7 +79,6 @@ WITH CA_REGION_DATA AS (
             name                       , code
         )
 )
--- SELECT * FROM CA_REGION_DATA;
 , US_REGION_DATA AS (
   SELECT (SELECT relid FROM managed_tables.country WHERE code_2 = 'US') country_relid
         ,s.*
@@ -123,7 +143,6 @@ WITH CA_REGION_DATA AS (
            name                        , code
          )
 )
--- SELECT * FROM US_REGION_DATA;
 ,REGION_DATA AS (
   SELECT *
         ,ROW_NUMBER() OVER(PARTITION BY s.country_relid) AS ord
@@ -135,7 +154,6 @@ WITH CA_REGION_DATA AS (
       FROM US_REGION_DATA
   ) s
 )
--- SELECT * FROM REGION_DATA;
 INSERT INTO managed_tables.region(
   description
  ,terms
@@ -150,5 +168,9 @@ SELECT r.name as description
   FROM REGION_DATA r
     ON CONFLICT(name, country_relid) DO
 UPDATE
-   SET               ord  = excluded.ord
- WHERE managed_tables.region.ord != excluded.ord;
+   SET description = excluded.name
+      ,terms       = TO_TSVECTOR('english', excluded.name || ' ' || excluded.code)
+      ,code        = excluded.code
+      ,ord         = excluded.ord
+ WHERE region.code != excluded.code
+    OR region.ord  != excluded.ord;

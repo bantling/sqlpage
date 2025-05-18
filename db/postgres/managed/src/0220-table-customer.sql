@@ -128,6 +128,25 @@ SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_perso
  )
 \gexec
 
+-- Trigger function to ensure that customer_person_address rows do NOT have an address type
+CREATE OR REPLACE FUNCTION customer_person_address_tg_fn() RETURNS trigger AS
+$$
+BEGIN
+  IF (SELECT address_type_relid IS NOT NULL FROM managed_tables.address WHERE relid = NEW.address_relid) THEN
+    -- The related address has an address type
+    RAISE EXCEPTION 'A customer person address cannot have an address type';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Person address trigger
+CREATE OR REPLACE TRIGGER customer_person_address_tg
+BEFORE INSERT OR UPDATE ON managed_tables.customer_person
+FOR EACH ROW
+EXECUTE FUNCTION customer_person_address_tg_fn();
+
 -- ==========================
 -- == business customer table
 -- ==========================

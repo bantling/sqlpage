@@ -1,3 +1,7 @@
+-- Increase logging level from default WARNING to NOTICE
+-- Warning level is verbose, notice level just provides a message
+SET log_min_messages = NOTICE;
+
 -- app_objects owns all database objects except functions and procedures
 SELECT 'CREATE ROLE managed_objects'
  WHERE NOT EXISTS (

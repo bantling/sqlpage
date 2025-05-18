@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS managed_tables.base(
   ,description TEXT
   ,terms       TSVECTOR
   ,extra       JSONB
-  ,created     TIMESTAMP WITH TIME ZONE
-  ,modified    TIMESTAMP WITH TIME ZONE
+  ,created     TIMESTAMP(3)
+  ,modified    TIMESTAMP(3)
 );
 
 -- Primary key
@@ -47,7 +47,7 @@ CREATE INDEX IF NOT EXISTS base_ix_modified ON managed_tables.base (modified);
 CREATE OR REPLACE FUNCTION base_tg_fn() RETURNS trigger AS
 $$
 DECLARE
-  V_CT TIMESTAMP := NOW() AT TIME ZONE 'UTC';
+  V_CT TIMESTAMP := NOW();
 BEGIN
   CASE TG_OP
     WHEN 'INSERT' THEN

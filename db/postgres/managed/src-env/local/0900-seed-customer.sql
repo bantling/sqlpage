@@ -1,5 +1,3 @@
-SET log_min_messages = NOTICE;
-
 -- Seed addresses in a simple way that is not super accurate, but good enough and easy to understand
 DO $$
 DECLARE
@@ -14,14 +12,17 @@ DECLARE
   -- The business address type relid (null for personal address)
   V_BUSINESS_ADDRESS_TYPE_RELID BIGINT;
 
-  -- The country and region values
+  -- The address values
   V_COUNTRY_RELID BIGINT;
   V_COUNTRY_CODE2 CHAR(2);
   V_COUNTRY_HAS_REGIONS BOOL;
-  V_REGION_CODE CHAR(2);
-
-  -- The region relid (null for countries with no regions)
   V_REGION_RELID BIGINT;
+  V_REGION_CODE CHAR(2);
+  V_CITY TEXT;
+  V_ADDRESS_1 TEXT;
+  V_ADDRESS_2 TEXT;
+  V_ADDRESS_3 TEXT;
+  V_MAILING_CODE TEXT;
 BEGIN
   RAISE NOTICE 'C_NUM_ROWS = %', C_NUM_ROWS;
 
@@ -41,8 +42,10 @@ BEGIN
 
     -- Choose a random country id and has_regions flag
     SELECT relid
+          ,code_2
           ,has_regions
       INTO V_COUNTRY_RELID
+          ,V_COUNTRY_CODE2
           ,V_COUNTRY_HAS_REGIONS
       FROM managed_tables.country
      ORDER BY RANDOM()
@@ -62,11 +65,35 @@ BEGIN
        LIMIT 1;
     END IF;
 
+    -- Choose a random city, street, civic numner, and mailing code (if applicable)
+    CASE V_COUNTRY_CODE2
+        WHEN 'AW'
+        -- Aruba
+        THEN SELECT managed_code.RANDOM_INT(1, 99) || ' ' || Street
+                   ,City
+               INTO V_ADDRESS_1
+                   ,V_CITY
+               FROM (VALUES
+                        ('Caya Frans Figaroa', 'Noord')
+                       ,('Spinozastraat'     , 'Oranjestad')
+                       ,('Bloemond'          , 'Paradera')
+                       ,('Sero Colorado'     , 'San Nicolas')
+                       ,('San Fuego'         , 'Santa Cruz')
+                    ) AS d(
+                         Street              , City
+                    )
+              ORDER BY RANDOM()
+              LIMIT 1;
+        ELSE NULL;
+    END CASE;
+
     RAISE NOTICE 'V_BUSINESS_ADDRESS_TYPE_RELID = %', V_BUSINESS_ADDRESS_TYPE_RELID;
-    RAISE NOTICE 'V_COUNTRY_RELID = %'              , V_COUNTRY_RELID;
-    RAISE NOTICE 'V_COUNTRY_HAS_REGIONS = %'        , V_COUNTRY_HAS_REGIONS;
-    RAISE NOTICE 'V_REGION_RELID = %'               , V_REGION_RELID;
-    RAISE NOTICE 'V_REGION_CODE = %'                , V_REGION_CODE;
+    RAISE NOTICE 'V_COUNTRY_RELID               = %', V_COUNTRY_RELID;
+    RAISE NOTICE 'V_COUNTRY_CODE2               = %', V_COUNTRY_CODE2;
+    RAISE NOTICE 'V_REGION_RELID                = %', V_REGION_RELID;
+    RAISE NOTICE 'V_REGION_CODE                 = %', V_REGION_CODE;
+    RAISE NOTICE 'V_ADDRESS_1                   = %', V_ADDRESS_1;
+    RAISE NOTICE 'V_CITY                        = %', V_CITY;
   END LOOP;
 END;
 $$ LANGUAGE plpgsql;

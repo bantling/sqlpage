@@ -109,7 +109,7 @@ SELECT 'ALTER TABLE managed_tables.region ADD CONSTRAINT region_uk_name_country 
      FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
     WHERE TABLE_SCHEMA    = 'managed_tables'
       AND TABLE_NAME      = 'region'
-      AND CONSTRAINT_NAME = 'region_uk_name'
+      AND CONSTRAINT_NAME = 'region_uk_name_country'
  )
 \gexec
 
@@ -120,7 +120,7 @@ SELECT 'ALTER TABLE managed_tables.region ADD CONSTRAINT region_uk_code_country 
      FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
     WHERE TABLE_SCHEMA    = 'managed_tables'
       AND TABLE_NAME      = 'region'
-      AND CONSTRAINT_NAME = 'region_uk_code'
+      AND CONSTRAINT_NAME = 'region_uk_code_country'
  )
 \gexec
 
