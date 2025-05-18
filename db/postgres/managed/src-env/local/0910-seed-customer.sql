@@ -1,7 +1,15 @@
+/*
+DO $$
+BEGIN
+  RAISE NOTICE 'PG_MANAGED_NUM_SEED_CUSTOMERS = ${PG_MANAGED_NUM_SEED_CUSTOMERS}'; -- Build variable
+END;
+$$ LANGUAGE plpgsql;
+*/
+
 -- Seed addresses in a simple way that is not super accurate, but good enough and easy to understand
 DO $$
 DECLARE
-  C_NUM_ROWS INT := ${PG_NUM_SEED_CUSTOMERS};
+  C_NUM_ROWS INT := ${PG_MANAGED_NUM_SEED_CUSTOMERS};
 
   -- Loop counter
   V_COUNT INT;
@@ -21,9 +29,6 @@ DECLARE
   -- The region relid (null for countries with no regions)
   V_REGION_RELID BIGINT;
 BEGIN
-  -- Output number of generated seed customers so it can be viewed in container logs
-  RAISE NOTICE 'C_NUM_ROWS = %', C_NUM_ROWS;
-
   FOR V_COUNT IN 1 .. C_NUM_ROWS LOOP
     -- Choose personal addresses 60% of the time, businesses 40%
     V_IS_PERSONAL := random() <= 0.60;

@@ -2,7 +2,7 @@
 /*
 DO $$
 BEGIN
-  RAISE NOTICE 'PG_EXEC_PASS = ${PG_EXEC_PASS}';
+  RAISE NOTICE 'PG_EXEC_PASS = ${PG_EXEC_PASS}'; -- build variable
 END;
 $$ LANGUAGE plpgsql;
 */
