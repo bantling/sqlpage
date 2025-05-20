@@ -337,17 +337,87 @@ SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT 
 -- RANDOM_INT: produce a random integer in a specified closed range
 -- P_MIN     : The minimum value
 -- P_MAX     : The maximum value
+-- The implementation uses PG_CRYPTO gen_random_bytes to generate random numbers with an fairly even distribution.
+-- The ordinary random() function is quite skewed for small ranges, and will heavily favour some values over others.
+-- It does not matter if P_MAX and/or P_MIN are negative, or if P_MAX < P_MIN.
+-- The result will be always in the closed range starting at P_MIN and counting towards positive infinity
+-- for ABS(P_MAX)-ABS(P_MIN)+1 values.
+-- EG:
+--  1. P_MIN, P_MAX =    5,  100: values will be the range [   5, 100]
+--  2. P_MIN, P_MAX =  100,    5: values will be the range [   5, 100]
+--  3. P_MIN, P_MAX =   -5,  100: values will be the range [  -5, 100]
+--  4. P_MIN, P_MAX =  100,   -5: values will be the range [  -5, 100]
+--  5. P_MIN, P_MAX = -100,    5: values will be the range [-100,   5]
+--  6. P_MIN, P_MAX =    5, -100: values will be the range [-100,   5]
+--  7. P_MIN, P_MAX = -100,   -5: values will be the range [-100,  -5]
+--  8. P_MIN, P_MAX =   -5, -100: values will be the range [-100,  -5]
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_INT(P_MIN INT = 1, P_MAX INT = 2_147_483_647) RETURNS INT AS
 $$
-  SELECT ROUND(RANDOM() * (COALESCE(P_MAX, 2_147_483_647) - COALESCE(P_MIN, 1)) + P_MIN)
+  SELECT ABS(('x' || ENCODE(GEN_RANDOM_BYTES(4), 'hex'))::BIT(32)::BIGINT) % (ABS(P_MAX - P_MIN) + 1) + LEAST(P_MIN, P_MAX)
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
--- Test RANDOM_INT
+-- 1. Test RANDOM_INT(5, 20)
 SELECT managed_code.TEST(
          'RANDOM_INT(5, 20) must return range of [5, 20]'
         ,array_agg(DISTINCT managed_code.RANDOM_INT(5, 20)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1000)
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 2. Test RANDOM_INT(20, 5)
+SELECT managed_code.TEST(
+         'RANDOM_INT(20, 5) must return range of [5, 20]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(20, 5)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+       )
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 3. Test RANDOM_INT(-5, 20)
+SELECT managed_code.TEST(
+         'RANDOM_INT(-5, 20) must return range of [-5, 20]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(-5, 20)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+       )
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 4. Test RANDOM_INT(20, -5)
+SELECT managed_code.TEST(
+         'RANDOM_INT(20, -5) must return range of [-5, 20]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(20, -5)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+       )
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 5. Test RANDOM_INT(-20, 5)
+SELECT managed_code.TEST(
+         'RANDOM_INT(-20, 5) must return range of [-20, 5]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(-20, 5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+       )
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 6. Test RANDOM_INT(5, -20)
+SELECT managed_code.TEST(
+         'RANDOM_INT(5, -20) must return range of [-20, 5]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+       )
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 7. Test RANDOM_INT(-20, -5)
+SELECT managed_code.TEST(
+         'RANDOM_INT(-20, -5) must return range of [-20, -5]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(-20, -5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+       )
+  FROM generate_series(1, 100_000)
+ ORDER BY 1;
+
+-- 8. Test RANDOM_INT(-5, -20)
+SELECT managed_code.TEST(
+         'RANDOM_INT(-5, -20) must return range of [-20, -5]'
+        ,array_agg(DISTINCT managed_code.RANDOM_INT(-5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+       )
+  FROM generate_series(1, 100_000)
  ORDER BY 1;
 ---------------------------------------------------------------------------------------------------
 
