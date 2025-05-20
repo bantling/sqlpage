@@ -214,7 +214,7 @@ BEGIN
              ,('US'   , 'KY'  , 99999 , 'Holmes St'          , 'Frankfort'       , (SELECT JSON_AGG(v::TEXT)::TEXT FROM (SELECT GENERATE_SERIES(400, 427) v EXCEPT SELECT 419 ORDER BY 1)))
              ,('US'   , 'KY'  , 99999 , 'S Floyd St'         , 'Louisville'      , (SELECT JSON_AGG(v::TEXT)::TEXT FROM (SELECT GENERATE_SERIES(400, 427) v EXCEPT SELECT 419 ORDER BY 1)))
            ) as d(
-               Country, Region, Range , St                   , City         , Prefix
+               Country, Region, Range , St                   , City              , Prefix
            )
      WHERE Country = V_COUNTRY_CODE2
        AND V_REGION_CODE IS NOT DISTINCT FROM Region
