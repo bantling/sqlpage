@@ -67,15 +67,6 @@ BEGIN
        LIMIT 1;
     END IF;
 
-    -- TEMP HARD CODING
-    SELECT relid INTO V_COUNTRY_RELID FROM managed_tables.country WHERE code_2 = 'AW';
-    V_COUNTRY_CODE2 := 'US';
-    --V_COUNTRY_HAS_REGIONS := FALSE;
-    --V_REGION_RELID := NULL;
-    --V_REGION_CODE := NULL;
-    SELECT relid INTO V_REGION_RELID FROM managed_tables.region WHERE code = 'NB';
-    V_REGION_CODE := 'GA';
-
     SELECT managed_code.RANDOM_INT(1, Range) || ' ' || St
           ,City
           ,CASE Country
