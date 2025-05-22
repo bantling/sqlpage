@@ -338,7 +338,7 @@ SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT 
 -- P_MIN     : The minimum value
 -- P_MAX     : The maximum value
 -- The implementation uses PG_CRYPTO gen_random_bytes to generate random numbers with an fairly even distribution.
--- The ordinary random() function is quite skewed for small ranges, and will heavily favour some values over others.
+-- The ordinary random() function is quite skewed, and will heavily favour some values over others.
 -- It does not matter if P_MAX and/or P_MIN are negative, or if P_MAX < P_MIN.
 -- The result will be always in the closed range starting at P_MIN and counting towards positive infinity
 -- for ABS(P_MAX)-ABS(P_MIN)+1 values.
@@ -353,13 +353,16 @@ SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT 
 --  8. P_MIN, P_MAX =   -5, -100: values will be the range [-100,  -5]
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_INT(P_MIN INT = 1, P_MAX INT = 2_147_483_647) RETURNS INT AS
 $$
+  -- There is a corner case where the 32-bit generated value may be the smallest negative value,
+  -- which is the only nebgative number that has no corresponding positive number.
+  -- In that case, ABS would fail with an error. By casting the 32-bit value to BIGINT, no error ever occurs.
   SELECT ABS(('x' || ENCODE(GEN_RANDOM_BYTES(4), 'hex'))::BIT(32)::BIGINT) % (ABS(P_MAX - P_MIN) + 1) + LEAST(P_MIN, P_MAX)
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- 1. Test RANDOM_INT(5, 20)
 SELECT managed_code.TEST(
          'RANDOM_INT(5, 20) must return range of [5, 20]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(5, 20)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(5, 20)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -367,7 +370,7 @@ SELECT managed_code.TEST(
 -- 2. Test RANDOM_INT(20, 5)
 SELECT managed_code.TEST(
          'RANDOM_INT(20, 5) must return range of [5, 20]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(20, 5)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(20, 5)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -375,7 +378,7 @@ SELECT managed_code.TEST(
 -- 3. Test RANDOM_INT(-5, 20)
 SELECT managed_code.TEST(
          'RANDOM_INT(-5, 20) must return range of [-5, 20]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(-5, 20)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-5, 20)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -383,7 +386,7 @@ SELECT managed_code.TEST(
 -- 4. Test RANDOM_INT(20, -5)
 SELECT managed_code.TEST(
          'RANDOM_INT(20, -5) must return range of [-5, 20]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(20, -5)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(20, -5)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -391,7 +394,7 @@ SELECT managed_code.TEST(
 -- 5. Test RANDOM_INT(-20, 5)
 SELECT managed_code.TEST(
          'RANDOM_INT(-20, 5) must return range of [-20, 5]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(-20, 5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-20, 5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -399,7 +402,7 @@ SELECT managed_code.TEST(
 -- 6. Test RANDOM_INT(5, -20)
 SELECT managed_code.TEST(
          'RANDOM_INT(5, -20) must return range of [-20, 5]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -407,7 +410,7 @@ SELECT managed_code.TEST(
 -- 7. Test RANDOM_INT(-20, -5)
 SELECT managed_code.TEST(
          'RANDOM_INT(-20, -5) must return range of [-20, -5]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(-20, -5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-20, -5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;
@@ -415,7 +418,7 @@ SELECT managed_code.TEST(
 -- 8. Test RANDOM_INT(-5, -20)
 SELECT managed_code.TEST(
          'RANDOM_INT(-5, -20) must return range of [-20, -5]'
-        ,array_agg(DISTINCT managed_code.RANDOM_INT(-5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
        )
   FROM generate_series(1, 100_000)
  ORDER BY 1;

@@ -174,8 +174,8 @@ SELECT 'ALTER TABLE managed_tables.customer_business ADD CONSTRAINT customer_bus
 -- == business address join table ==
 -- =================================
 CREATE TABLE IF NOT EXISTS managed_tables.customer_business_address_jt(
-   business_relid BIGINT
-  ,address_relid  BIGINT
+   business_relid     BIGINT
+  ,address_relid      BIGINT
 );
 
 SELECT 'ALTER TABLE managed_tables.customer_business_address_jt ADD CONSTRAINT customer_business_address_jt_pk PRIMARY KEY(business_relid, address_relid)'
@@ -208,13 +208,40 @@ SELECT 'ALTER TABLE managed_tables.customer_business_address_jt ADD CONSTRAINT c
  )
 \gexec
 
--- Trigger function to ensure that customer_business_address rows have an address type
+-- Trigger function to ensure that:
+-- 1. An address joined to a business has an address type
+-- 2. There does not already exist another address joined to the same business with the same address type
 CREATE OR REPLACE FUNCTION customer_business_address_jt_tg_fn() RETURNS trigger AS
 $$
+DECLARE
+    V_ADDRESS_TYPE_RELID BIGINT;
+    V_ADDRESS_TYPE_NAME TEXT;
 BEGIN
-  IF (SELECT address_type_relid IS NULL FROM managed_tables.address WHERE relid = NEW.address_relid) THEN
-    -- The related address has no address type
-    RAISE EXCEPTION 'A customer business address must have an address type';
+  -- Get address type relid and name
+  SELECT a.address_type_relid
+        ,mtat.name
+    INTO V_ADDRESS_TYPE_RELID
+        ,V_ADDRESS_TYPE_NAME
+    FROM managed_tables.address a
+    JOIN managed_tables.address_type mtat
+      ON mtat.relid = a.address_type_relid
+   WHERE relid = NEW.address_relid;
+
+  -- The related address must have a type
+  IF V_ADDRESS_TYPE_RELID IS NULL THEN
+    RAISE EXCEPTION 'A customer business address must have an address type: business relid = %, address relid = %', NEW.business_relid, NEW.address_relid;
+  END IF;
+
+  -- Check if there already exists a mapping of this business to another address of the same type
+  IF EXISTS (
+    SELECT 1
+      FROM managed_tables.customer_business_address_jt cbaj
+      JOIN managed_tables.address mtad
+        ON mtad.relid = cbaj.address_relid
+       AND mtad.address_type_relid = V_ADDRESS_TYPE_RELID
+     WHERE cbaj.business_relid = NEW.business_relid
+  ) THEN
+    RAISE EXCEPTION 'A customer business cannot have two addresses of the same type: business relid = %, address type = %', NEW.business_relid, V_ADDRESS_TYPE_NAME;
   END IF;
   
   RETURN NEW;

@@ -34,7 +34,7 @@ BEGIN
 
   FOR V_COUNT_CUSTOMERS IN 1 .. C_NUM_CUSTOMERS LOOP
     -- Choose personal addresses 85% of the time, businesses 15%
-    V_IS_PERSONAL := random() <= 0.85;
+    V_IS_PERSONAL := managed_code.RANDOM_INT(1, 100) <= 85;
 
     -- Business addresses need a random subset of address type relids
     IF NOT V_IS_PERSONAL THEN
