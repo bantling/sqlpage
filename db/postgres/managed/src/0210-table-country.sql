@@ -12,10 +12,16 @@ CREATE TABLE IF NOT EXISTS managed_tables.country(
   ,ord                 INTEGER NOT NULL
 ) INHERITS (managed_tables.base);
 
--- Base trigger
-CREATE OR REPLACE TRIGGER country_tg
-BEFORE INSERT OR UPDATE ON managed_tables.country
+-- Base triggers
+CREATE OR REPLACE TRIGGER country_tg_ins
+BEFORE INSERT ON managed_tables.country
 FOR EACH ROW
+EXECUTE FUNCTION base_tg_fn();
+
+CREATE OR REPLACE TRIGGER country_tg_upd
+BEFORE UPDATE ON managed_tables.country
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
 EXECUTE FUNCTION base_tg_fn();
 
 -- Primary key
@@ -86,9 +92,15 @@ CREATE TABLE IF NOT EXISTS managed_tables.region(
 ) INHERITS(managed_tables.base);
 
 -- Base trigger
-CREATE OR REPLACE TRIGGER region_tg
-BEFORE INSERT OR UPDATE ON managed_tables.region
+CREATE OR REPLACE TRIGGER region_tg_ins
+BEFORE INSERT ON managed_tables.region
 FOR EACH ROW
+EXECUTE FUNCTION base_tg_fn();
+
+CREATE OR REPLACE TRIGGER region_tg_upd
+BEFORE UPDATE ON managed_tables.region
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
 EXECUTE FUNCTION base_tg_fn();
 
 -- Primary key

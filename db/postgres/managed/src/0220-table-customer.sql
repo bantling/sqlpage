@@ -7,9 +7,15 @@ CREATE TABLE IF NOT EXISTS managed_tables.address_type(
 ) INHERITS(managed_tables.base);
 
 -- Base trigger
-CREATE OR REPLACE TRIGGER address_type_tg
-BEFORE INSERT OR UPDATE ON managed_tables.address_type
+CREATE OR REPLACE TRIGGER address_type_tg_ins
+BEFORE INSERT ON managed_tables.address_type
 FOR EACH ROW
+EXECUTE FUNCTION base_tg_fn();
+
+CREATE OR REPLACE TRIGGER address_type_tg_upd
+BEFORE UPDATE ON managed_tables.address_type
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
 EXECUTE FUNCTION base_tg_fn();
 
 SELECT 'ALTER TABLE managed_tables.address_type ADD CONSTRAINT address_type_pk PRIMARY KEY(relid)'
@@ -47,9 +53,15 @@ CREATE TABLE IF NOT EXISTS managed_tables.address(
 ) INHERITS(managed_tables.base);
 
 -- Base trigger
-CREATE OR REPLACE TRIGGER address_tg
-BEFORE INSERT OR UPDATE ON managed_tables.address
+CREATE OR REPLACE TRIGGER address_tg_ins
+BEFORE INSERT ON managed_tables.address
 FOR EACH ROW
+EXECUTE FUNCTION base_tg_fn();
+
+CREATE OR REPLACE TRIGGER address_tg_upd
+BEFORE UPDATE ON managed_tables.address
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
 EXECUTE FUNCTION base_tg_fn();
 
 SELECT 'ALTER TABLE managed_tables.address ADD CONSTRAINT address_pk PRIMARY KEY(relid)'
@@ -103,9 +115,15 @@ CREATE TABLE IF NOT EXISTS managed_tables.customer_person(
 ) INHERITS(managed_tables.base);
 
 -- Base trigger
-CREATE OR REPLACE TRIGGER customer_person_tg
-BEFORE INSERT OR UPDATE ON managed_tables.customer_person
+CREATE OR REPLACE TRIGGER customer_person_tg_ins
+BEFORE INSERT ON managed_tables.customer_person
 FOR EACH ROW
+EXECUTE FUNCTION base_tg_fn();
+
+CREATE OR REPLACE TRIGGER customer_person_tg_upd
+BEFORE UPDATE ON managed_tables.customer_person
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
 EXECUTE FUNCTION base_tg_fn();
 
 SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_person_pk PRIMARY KEY(relid)'
@@ -155,9 +173,15 @@ CREATE TABLE IF NOT EXISTS managed_tables.customer_business(
 ) INHERITS(managed_tables.base);
 
 -- Base trigger
-CREATE OR REPLACE TRIGGER customer_business_tg
-BEFORE INSERT OR UPDATE ON managed_tables.customer_business
+CREATE OR REPLACE TRIGGER customer_business_tg_ins
+BEFORE INSERT ON managed_tables.customer_business
 FOR EACH ROW
+EXECUTE FUNCTION base_tg_fn();
+
+CREATE OR REPLACE TRIGGER customer_business_tg_upd
+BEFORE UPDATE ON managed_tables.customer_business
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
 EXECUTE FUNCTION base_tg_fn();
 
 SELECT 'ALTER TABLE managed_tables.customer_business ADD CONSTRAINT customer_business_pk PRIMARY KEY(relid)'

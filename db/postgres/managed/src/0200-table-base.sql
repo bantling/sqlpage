@@ -71,12 +71,12 @@ BEGIN
       IF NEW.version != OLD.version THEN
         RAISE EXCEPTION 'The version of id % has changed since the record was loaded', managed_code.RELID_TO_ID(NEW.relid);
       END IF;
-      
-      -- Always advance version by 1
-      NEW.version = OLD.version + 1;
 
       -- Cannot change created date
       NEW.created = OLD.created;
+      
+      -- Always advance version by 1
+      NEW.version = OLD.version + 1;
       
       -- Always set modified date to current time
       NEW.modified = V_CT;
@@ -109,9 +109,16 @@ BEGIN
 
         -- We never actually insert into base table, only derived tables
         CREATE TABLE testbase(stuff TEXT) INHERITS (managed_tables.base);
-        CREATE OR REPLACE TRIGGER testbase_tg
-        BEFORE INSERT OR UPDATE ON testbase
+
+        CREATE OR REPLACE TRIGGER testbase_tg_ins
+        BEFORE INSERT ON testbase
         FOR EACH ROW
+        EXECUTE FUNCTION base_tg_fn();
+
+        CREATE OR REPLACE TRIGGER testbase_tg_upd
+        BEFORE UPDATE ON testbase
+        FOR EACH ROW
+        WHEN (OLD IS DISTINCT FROM NEW)
         EXECUTE FUNCTION base_tg_fn();
 
         INSERT INTO testbase(
@@ -164,6 +171,20 @@ BEGIN
        -- Updating relid is an error
        PERFORM managed_code.TEST('The relid cannot be changed from 1 to 2', 'UPDATE testbase SET relid = 2 WHERE relid = 1');
        PERFORM managed_code.TEST('The version of id 1 has changed since the record was loaded', 'UPDATE testbase SET version = 10 WHERE relid = 1');
+
+       -- Get results of a non-update
+       V_MODIFIED := V_MODIFIED2;
+       UPDATE testbase
+          SET stuff = stuff
+        WHERE relid = V_RELID
+       RETURNING relid,   version,   created,    modified,    stuff
+         INTO    V_RELID, V_VERSION, V_CREATED2, V_MODIFIED2, V_STUFF;
+
+       PERFORM managed_code.TEST('Same relid', V_RELID = 1);
+       PERFORM managed_code.TEST('Same VERSION', V_VERSION = 2);
+       PERFORM managed_code.TEST('Same created', V_CREATED = V_CREATED2);
+       PERFORM managed_code.TEST('Same modified', V_MODIFIED = V_MODIFIED2);
+       PERFORM managed_code.TEST('Same stuff', V_STUFF = 'dude');
 
        DROP TABLE testbase CASCADE;
     END IF;
