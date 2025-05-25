@@ -354,10 +354,23 @@ SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT 
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_INT(P_MIN INT = 1, P_MAX INT = 2_147_483_647) RETURNS INT AS
 $$
   -- There is a corner case where the 32-bit generated value may be the smallest negative value,
-  -- which is the only nebgative number that has no corresponding positive number.
+  -- which is the only negative number that has no corresponding positive number.
   -- In that case, ABS would fail with an error. By casting the 32-bit value to BIGINT, no error ever occurs.
   SELECT ABS(('x' || ENCODE(GEN_RANDOM_BYTES(4), 'hex'))::BIT(32)::BIGINT) % (ABS(P_MAX - P_MIN) + 1) + LEAST(P_MIN, P_MAX)
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
+
+-- Test RANDOM_INT()
+SELECT managed_code.TEST(
+         'RANDOM_INT() returns an int'
+        ,managed_code.RANDOM_INT() IS NOT NULL
+       );
+
+-- Test RANDOM_INT()
+SELECT managed_code.TEST(
+         'RANDOM_INT(50) returns an int >= 50'
+        ,managed_code.RANDOM_INT(50) >= 50
+       )
+  FROM generate_series(1, 1_000);
 
 -- 1. Test RANDOM_INT(5, 20)
 SELECT managed_code.TEST(

@@ -23,6 +23,7 @@ PG_MANAGED_SRC_ENV_ARG := $(if $(PG_MANAGED_SRC_ENV),--build-arg "PG_MANAGED_SRC
 # Database name, and app_exec user password
 PG_MANAGED_DB_NAME            := pg_managed
 PG_MANAGED_PASS               := pg_managed_pass
+PG_MANAGED_EXEC_USER          := managed_app_exec
 PG_MANAGED_EXEC_PASS          := pg_managed_exec_pass
 PG_MANAGED_NUM_SEED_CUSTOMERS := 1
 
@@ -119,10 +120,15 @@ pg-managed-oci-run:
 pg-managed-oci-logs:
 	podman logs $(PG_MANAGED_DEPLOY_NAME) | more
 
-# Run psql inside running postgres container
+# Run psql inside running postgres container as app layer user
 .PHONY: pg-managed-oci-psql
 pg-managed-oci-psql:
-	podman exec -it $(PG_MANAGED_DEPLOY_NAME) psql -U postgres -d $(PG_MANAGED_DB_NAME)
+	podman exec -e "PGPASSWORD=$(PG_MANAGED_EXEC_PASS)" -it $(PG_MANAGED_DEPLOY_NAME) psql -U $(PG_MANAGED_EXEC_USER) -h 127.0.0.1 -d $(PG_MANAGED_DB_NAME)
+
+# Run psql inside running postgres container as postgres super user
+.PHONY: pg-managed-oci-super
+pg-managed-oci-super:
+	podman exec -e "PGPASSWORD=$(PG_MANAGED_PASS)" -it $(PG_MANAGED_DEPLOY_NAME) psql -U postgres -h 127.0.0.1 -d $(PG_MANAGED_DB_NAME)
 
 # Run bash inside running postgres container
 .PHONY: pg-managed-oci-bash
@@ -143,4 +149,5 @@ pg-managed-vars:
 	echo "PG_MANAGED_SRC_ENV_ARG = $(PG_MANAGED_SRC_ENV_ARG)"
 	echo "PG_MANAGED_DB_NAME     = $(PG_MANAGED_DB_NAME)"
 	echo "PG_MANAGED_PASS        = $(PG_MANAGED_PASS)"
-	echo "PG_MANAGED_EXEC_PASS   = ${PG_MANAGED_EXEC_PASS}"
+	echo "PG_MANAGED_EXEC_USER   = $(PG_MANAGED_EXEC_USER)"
+	echo "PG_MANAGED_EXEC_PASS   = $(PG_MANAGED_EXEC_PASS)"
