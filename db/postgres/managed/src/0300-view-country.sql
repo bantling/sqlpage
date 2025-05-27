@@ -1,6 +1,6 @@
--- Country regions view, where regions is an array of all regions for the country, that is empty if there are no regions
+-- Country regions view, where regions is an array of all regions for the country, that is null if there are no regions
 CREATE OR REPLACE VIEW managed_views.country_regions AS
-SELECT jsonb_build_object(
+SELECT JSONB_BUILD_OBJECT(
           'id'                ,managed_code.RELID_TO_ID(c.relid)
          ,'version'           ,c.version
          ,'created'           ,c.created
@@ -12,8 +12,8 @@ SELECT jsonb_build_object(
          ,'hasMailingCode'    ,c.has_mailing_code
          ,'mailingCodeMatch'  ,c.mailing_code_match
          ,'mailingCodeFormat' ,c.mailing_code_format
-         ,'regions'           ,(SELECT jsonb_agg(
-                                         jsonb_build_object(
+         ,'regions'           ,(SELECT COALESCE(JSONB_AGG(
+                                         JSONB_BUILD_OBJECT(
                                             'id'       , managed_code.RELID_TO_ID(r.relid)
                                            ,'version'  , r.version
                                            ,'created'  , r.created
@@ -23,7 +23,7 @@ SELECT jsonb_build_object(
                                          )
                                          ORDER
                                             BY r.name
-                                       ) region
+                                       ), '[]'::JSONB)
                                   FROM managed_tables.region r
                                  WHERE r.country_relid = c.relid
                                )

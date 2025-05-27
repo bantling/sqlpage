@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS base_ix_modified ON managed_tables.base (modified);
 -- - current timestamp is not an immutable function, so cannot be used for a generated column
 -- - this trigger must be separately applied to each child table
 -- - it is not applied to the base table, as that would not accomplish anything
-CREATE OR REPLACE FUNCTION base_tg_fn() RETURNS trigger AS
+CREATE OR REPLACE FUNCTION BASE_TG_FN() RETURNS trigger AS
 $$
 DECLARE
   V_CT TIMESTAMP := NOW() AT TIME ZONE 'UTC';
@@ -52,7 +52,9 @@ BEGIN
   CASE TG_OP
     WHEN 'INSERT' THEN
       -- Always use next relid in sequence
-      SELECT COALESCE(MAX(relid), 0) + 1 INTO NEW.relid FROM managed_tables.base;
+      SELECT COALESCE(MAX(relid), 0) + 1
+        INTO NEW.relid
+        FROM managed_tables.base;
 
       -- Always atart at version 1
       NEW.version = 1;
@@ -69,7 +71,10 @@ BEGIN
 
       -- The new and old versions have to match, otherwise some change has occurred since it was loaded
       IF NEW.version != OLD.version THEN
-        RAISE EXCEPTION 'The version of id % has changed since the record was loaded', managed_code.RELID_TO_ID(NEW.relid);
+        RAISE EXCEPTION 'The version of id % has changed from % to % since the record was loaded'
+                       ,managed_code.RELID_TO_ID(OLD.relid)
+                       ,OLD.version
+                       ,NEW.version;
       END IF;
 
       -- Cannot change created date
@@ -85,7 +90,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE PLPGSQL;
 
 -- Test base trigger (only if base table is empty)
 DO $$
@@ -113,13 +118,13 @@ BEGIN
         CREATE OR REPLACE TRIGGER testbase_tg_ins
         BEFORE INSERT ON testbase
         FOR EACH ROW
-        EXECUTE FUNCTION base_tg_fn();
+        EXECUTE FUNCTION BASE_TG_FN();
 
         CREATE OR REPLACE TRIGGER testbase_tg_upd
         BEFORE UPDATE ON testbase
         FOR EACH ROW
         WHEN (OLD IS DISTINCT FROM NEW)
-        EXECUTE FUNCTION base_tg_fn();
+        EXECUTE FUNCTION BASE_TG_FN();
 
         INSERT INTO testbase(
             relid
@@ -170,7 +175,7 @@ BEGIN
 
        -- Updating relid is an error
        PERFORM managed_code.TEST('The relid cannot be changed from 1 to 2', 'UPDATE testbase SET relid = 2 WHERE relid = 1');
-       PERFORM managed_code.TEST('The version of id 1 has changed since the record was loaded', 'UPDATE testbase SET version = 10 WHERE relid = 1');
+       PERFORM managed_code.TEST('The version of id 1 has changed from 2 to 10 since the record was loaded', 'UPDATE testbase SET version = 10 WHERE relid = 1');
 
        -- Get results of a non-update
        V_MODIFIED := V_MODIFIED2;
@@ -180,13 +185,13 @@ BEGIN
        RETURNING relid,   version,   created,    modified,    stuff
          INTO    V_RELID, V_VERSION, V_CREATED2, V_MODIFIED2, V_STUFF;
 
-       PERFORM managed_code.TEST('Same relid', V_RELID = 1);
-       PERFORM managed_code.TEST('Same VERSION', V_VERSION = 2);
-       PERFORM managed_code.TEST('Same created', V_CREATED = V_CREATED2);
+       PERFORM managed_code.TEST('Same relid'   , V_RELID    = 1          );
+       PERFORM managed_code.TEST('Same VERSION' , V_VERSION  = 2          );
+       PERFORM managed_code.TEST('Same created' , V_CREATED  = V_CREATED2 );
        PERFORM managed_code.TEST('Same modified', V_MODIFIED = V_MODIFIED2);
-       PERFORM managed_code.TEST('Same stuff', V_STUFF = 'dude');
+       PERFORM managed_code.TEST('Same stuff'   , V_STUFF    = 'dude'     );
 
        DROP TABLE testbase CASCADE;
     END IF;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE PLPGSQL;

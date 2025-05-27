@@ -1,5 +1,8 @@
 -- Grant app layer access only to run code, they cannot access the tables or views at all.
--- This prevents the app user from doing things like turning off triggers.
+-- This prevents the app user from doing things like:
+-- - turning off triggers
+-- - truncating tables
+-- - destroying tables, views, functions, procedures
 -- This is accomplished by:
 -- - Granting usage and execute on all functions and procedures to app layer user
 -- - Ensuring all functions and procedures that access tables or views are created with SECURITY DEFINER

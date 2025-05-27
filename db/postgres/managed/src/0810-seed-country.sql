@@ -174,3 +174,54 @@ UPDATE
       ,ord         = excluded.ord
  WHERE region.code != excluded.code
     OR region.ord  != excluded.ord;
+
+-- Test GET_COUNTRIES() to get all countries
+-- This defaults the codes into a NULL array
+SELECT managed_code.TEST(
+  'GET_COUNTRIES() returns all countries in order'
+ ,(SELECT ARRAY_AGG(code2) = (SELECT ARRAY_AGG(country_regions -> 'code2' #>> '{}') FROM managed_views.country_regions)
+     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES()) -> 'code2' #>> '{}' code2)
+  )
+);
+
+-- Test GET_COUNTRIES(VARIADIC NULL) to get all countries
+-- This explicitly provides a NULL array
+SELECT managed_code.TEST(
+  'GET_COUNTRIES(VARIADIC NULL) returns all countries in order'
+ ,(SELECT ARRAY_AGG(code2) = (SELECT ARRAY_AGG(country_regions -> 'code2' #>> '{}') FROM managed_views.country_regions)
+     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES(VARIADIC NULL)) -> 'code2' #>> '{}' code2)
+  )
+);
+
+-- Test GET_COUNTRIES(NULL) to get all countries
+-- This provides an array of one NULL element
+SELECT managed_code.TEST(
+  'GET_COUNTRIES(NULL) returns all countries in order'
+ ,(SELECT ARRAY_AGG(code2) = (SELECT ARRAY_AGG(country_regions -> 'code2' #>> '{}') FROM managed_views.country_regions)
+     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES(NULL)) -> 'code2' #>> '{}' code2)
+  )
+);
+
+-- Test GET_COUNTRIES('AW') to get one country
+SELECT managed_code.TEST(
+  'GET_COUNTRIES(AW) returns only Aruba'
+ ,(SELECT ARRAY_AGG(code2) = ARRAY['AW']
+     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES('AW')) -> 'code2' #>> '{}' code2)
+  )
+);
+
+-- Test GET_COUNTRIES(NULL, 'AW', NULL) to get one country
+SELECT managed_code.TEST(
+  'GET_COUNTRIES(NULL, AW, NULL) returns only Aruba'
+ ,(SELECT ARRAY_AGG(code2) = ARRAY['AW']
+     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES(NULL, 'AW', NULL)) -> 'code2' #>> '{}' code2)
+  )
+);
+
+-- Test GET_COUNTRIES to get two countries
+SELECT managed_code.TEST(
+  'GET_COUNTRIES(CXR, AW) returns Aruba and Christmas Island in that order'
+ ,(SELECT ARRAY_AGG(code2) = ARRAY['AW', 'CX']
+     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES('CXR', 'AW')) -> 'code2' #>> '{}' code2)
+  )
+);

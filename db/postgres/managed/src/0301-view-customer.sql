@@ -1,6 +1,6 @@
 -- Join customer_person and their optional address
 CREATE OR REPLACE VIEW managed_views.customer_person_address AS
-SELECT jsonb_build_object(
+SELECT JSONB_BUILD_OBJECT(
           'id'          ,managed_code.RELID_TO_ID(cp.relid)
          ,'version'     ,cp.version
          ,'created'     ,cp.created
@@ -8,8 +8,8 @@ SELECT jsonb_build_object(
          ,'first_name'  ,cp.first_name
          ,'middle_name' ,cp.middle_name
          ,'last_name'   ,cp.last_name
-         ,'address'    ,(SELECT jsonb_strip_nulls(
-                                  jsonb_build_object(
+         ,'address'    ,(SELECT JSONB_STRIP_NULLS(
+                                  JSONB_BUILD_OBJECT(
                                      'id'           ,managed_code.RELID_TO_ID(a.relid)
                                     ,'version'      ,a.version
                                     ,'created'      ,a.created
@@ -38,15 +38,15 @@ SELECT jsonb_build_object(
 
 -- Join customer_business and their address(es)
 CREATE OR REPLACE VIEW managed_views.customer_business_address AS
-SELECT jsonb_build_object(
+SELECT JSONB_BUILD_OBJECT(
           'id'         ,managed_code.RELID_TO_ID(cb.relid)
          ,'version'    ,cb.version
          ,'created'    ,cb.created
          ,'changed'    ,cb.modified
          ,'name'       ,cb.name
-         ,'addresses'  ,(SELECT jsonb_agg(
-                                  jsonb_strip_nulls(
-                                    jsonb_build_object(
+         ,'addresses'  ,(SELECT JSONB_AGG(
+                                  JSONB_STRIP_NULLS(
+                                    JSONB_BUILD_OBJECT(
                                        'id'          ,managed_code.RELID_TO_ID(a.relid)
                                       ,'type'        ,t.name
                                       ,'version'     ,a.version

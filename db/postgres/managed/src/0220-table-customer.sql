@@ -10,13 +10,13 @@ CREATE TABLE IF NOT EXISTS managed_tables.address_type(
 CREATE OR REPLACE TRIGGER address_type_tg_ins
 BEFORE INSERT ON managed_tables.address_type
 FOR EACH ROW
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 CREATE OR REPLACE TRIGGER address_type_tg_upd
 BEFORE UPDATE ON managed_tables.address_type
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.address_type ADD CONSTRAINT address_type_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -56,13 +56,13 @@ CREATE TABLE IF NOT EXISTS managed_tables.address(
 CREATE OR REPLACE TRIGGER address_tg_ins
 BEFORE INSERT ON managed_tables.address
 FOR EACH ROW
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 CREATE OR REPLACE TRIGGER address_tg_upd
 BEFORE UPDATE ON managed_tables.address
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.address ADD CONSTRAINT address_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -118,13 +118,13 @@ CREATE TABLE IF NOT EXISTS managed_tables.customer_person(
 CREATE OR REPLACE TRIGGER customer_person_tg_ins
 BEFORE INSERT ON managed_tables.customer_person
 FOR EACH ROW
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 CREATE OR REPLACE TRIGGER customer_person_tg_upd
 BEFORE UPDATE ON managed_tables.customer_person
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_person_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -147,7 +147,7 @@ SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_perso
 \gexec
 
 -- Trigger function to ensure that customer_person_address rows do NOT have an address type
-CREATE OR REPLACE FUNCTION customer_person_address_tg_fn() RETURNS trigger AS
+CREATE OR REPLACE FUNCTION CUSTOMER_PERSON_ADDRESS_TG_FN() RETURNS trigger AS
 $$
 BEGIN
   IF (SELECT address_type_relid IS NOT NULL FROM managed_tables.address WHERE relid = NEW.address_relid) THEN
@@ -157,13 +157,13 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE PLPGSQL;
 
 -- Person address trigger
 CREATE OR REPLACE TRIGGER customer_person_address_tg
 BEFORE INSERT OR UPDATE ON managed_tables.customer_person
 FOR EACH ROW
-EXECUTE FUNCTION customer_person_address_tg_fn();
+EXECUTE FUNCTION CUSTOMER_PERSON_ADDRESS_TG_FN();
 
 -- ==========================
 -- == business customer table
@@ -182,7 +182,7 @@ CREATE OR REPLACE TRIGGER customer_business_tg_upd
 BEFORE UPDATE ON managed_tables.customer_business
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.customer_business ADD CONSTRAINT customer_business_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -235,7 +235,7 @@ SELECT 'ALTER TABLE managed_tables.customer_business_address_jt ADD CONSTRAINT c
 -- Trigger function to ensure that:
 -- 1. An address joined to a business has an address type
 -- 2. There does not already exist another address joined to the same business with the same address type
-CREATE OR REPLACE FUNCTION customer_business_address_jt_tg_fn() RETURNS trigger AS
+CREATE OR REPLACE FUNCTION CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN() RETURNS trigger AS
 $$
 DECLARE
     V_ADDRESS_TYPE_RELID BIGINT;
@@ -276,4 +276,4 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE TRIGGER customer_business_address_jt_tg
 BEFORE INSERT OR UPDATE ON managed_tables.customer_business_address_jt
 FOR EACH ROW
-EXECUTE FUNCTION customer_business_address_jt_tg_fn();
+EXECUTE FUNCTION CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN();

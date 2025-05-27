@@ -21,7 +21,7 @@ BEGIN
       RETURN TRUE;
   END CASE;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE PLPGSQL IMMUTABLE;
 
 -- TEST(TEXT, TEXT): test a function for a case that raises an exception
 --   P_ERR   : expected exception text (cannot be null or empty)
@@ -72,7 +72,7 @@ BEGIN
   -- Success
   RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE PLPGSQL;
 
 -- Test TEST(P_MSG, P_TEST)
 DO $$
@@ -149,7 +149,7 @@ BEGIN
       RAISE EXCEPTION 'managed_code.TEST must not die when P_TEST is true';
   END;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE PLPGSQL;
 
 -- Test TEST(P_ERR, P_QUERY)
 DO $$
@@ -248,7 +248,7 @@ BEGIN
     RAISE EXCEPTION 'managed_code.TEST must die when COALESCE() fails and we provided wrong error message';
   END IF;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE PLPGSQL;
 ---------------------------------------------------------------------------------------------------
 
 
@@ -271,7 +271,7 @@ BEGIN
   
   RETURN CASE WHEN P_EXPR THEN P_TRUE_VAL ELSE P_FALSE_VAL END;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE LEAKPROOF PARALLEL SAFE;
+$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test IIF
 SELECT *
@@ -494,7 +494,7 @@ BEGIN
   
   RETURN V_ID;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE LEAKPROOF PARALLEL SAFE;
+$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 --- Test RELID_TO_ID
 SELECT DISTINCT * FROM (
@@ -580,7 +580,7 @@ BEGIN
   
   RETURN V_RELID;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE LEAKPROOF PARALLEL SAFE;
+$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 --- Test ID_TO_RELID
 SELECT DISTINCT * FROM (
