@@ -19,14 +19,18 @@ DECLARE
   V_LOOP_BUSINESS_ADDRESS_TYPE_RELIDS_IX INT;
 
   -- The address values
+  V_DESCRIPTION TEXT;
   V_COUNTRY_RELID BIGINT;
+  V_COUNTRY_NAME TEXT;
   V_COUNTRY_CODE2 CHAR(2);
   V_COUNTRY_HAS_REGIONS BOOL;
   V_REGION_RELID BIGINT;
+  V_REGION_NAME TEXT;
   V_REGION_CODE CHAR(2);
   V_ADDRESS_LINE_1 TEXT;
   V_ADDRESS_LINE_2 TEXT;
   V_ADDRESS_LINE_3 TEXT;
+  V_ADDRESS TEXT;
   V_CITY TEXT;
   V_MAILING_CODE TEXT;
 BEGIN
@@ -37,26 +41,28 @@ BEGIN
     V_IS_PERSONAL := managed_code.RANDOM_INT(1, 100) <= 85;
 
     -- Business addresses need a random subset of address type relids
-    IF NOT V_IS_PERSONAL THEN
-       SELECT ARRAY_AGG(relid)
-         INTO V_BUSINESS_ADDRESS_TYPE_RELIDS
-         FROM (
-           SELECT relid
-             FROM managed_tables.address_type
-            ORDER
-               BY managed_code.RANDOM_INT()
-            LIMIT managed_code.RANDOM_INT(1, (SELECT COUNT(*)::INT FROM managed_tables.address_type))
-         ) t;
-    END IF;
+    -- If V_IS_PERSONAL is false, 0 rows are selected, causing ARRAY_AGG(relid) to be NULL
+    SELECT ARRAY_AGG(relid)
+      INTO V_BUSINESS_ADDRESS_TYPE_RELIDS
+      FROM (
+        SELECT relid
+          FROM managed_tables.address_type
+         ORDER
+            BY managed_code.RANDOM_INT()
+         LIMIT managed_code.RANDOM_INT(1, (SELECT COUNT(*)::INT FROM managed_tables.address_type))
+      ) t
+     WHERE NOT V_IS_PERSONAL;
 
     -- Loop 1 time for a person, for each selected address type for a business
     -- Array indexes are 1-based
-    FOR V_LOOP_BUSINESS_ADDRESS_TYPE_RELIDS_IX IN 1 .. managed_code.IIF(V_IS_PERSONAL, 1, ARRAY_LENGTH(V_BUSINESS_ADDRESS_TYPE_RELIDS, 1)) LOOP
+    FOR V_LOOP_BUSINESS_ADDRESS_TYPE_RELIDS_IX IN 1 .. COALESCE(ARRAY_LENGTH(V_BUSINESS_ADDRESS_TYPE_RELIDS, 1), 1) LOOP
         -- Choose a random country
         SELECT relid
+              ,name
               ,code_2
               ,has_regions
           INTO V_COUNTRY_RELID
+              ,V_COUNTRY_NAME
               ,V_COUNTRY_CODE2
               ,V_COUNTRY_HAS_REGIONS
           FROM managed_tables.country
@@ -64,17 +70,21 @@ BEGIN
             BY managed_code.RANDOM_INT()
          LIMIT 1;
 
-        -- Choose a random region id and code if the country has regions
+        -- Choose a random region if the country has regions
         V_REGION_RELID := NULL;
+        V_REGION_NAME  := NULL;
         V_REGION_CODE  := NULL;
         IF V_COUNTRY_HAS_REGIONS THEN
           SELECT relid
+                ,name
                 ,code
             INTO V_REGION_RELID
+                ,V_REGION_NAME
                 ,V_REGION_CODE
             FROM managed_tables.region
            WHERE country_relid = V_COUNTRY_RELID
-           ORDER BY managed_code.RANDOM_INT()
+           ORDER
+              BY managed_code.RANDOM_INT()
            LIMIT 1;
         END IF;
 
@@ -82,6 +92,8 @@ BEGIN
         SELECT managed_code.RANDOM_INT(1, Range) || ' ' || St -- Civic number, space, street name
               ,City
               ,CASE Country -- Mailing code
+                 -- Canada postal code first letter has multiple values for some provinces
+                 -- Choose one letter at random
                  WHEN 'CA' THEN SUBSTRING(Prefix FROM managed_code.RANDOM_INT(1, LENGTH(Prefix)) FOR 1) -- letter
                     || managed_code.RANDOM_INT(1, 9)                    -- digit
                     || CHR(ASCII('A') + managed_code.RANDOM_INT(0, 25)) -- letter
@@ -89,7 +101,13 @@ BEGIN
                     || managed_code.RANDOM_INT(1, 9)                    -- digit
                     || CHR(ASCII('A') + managed_code.RANDOM_INT(0, 25)) -- letter
                     || managed_code.RANDOM_INT(1, 9)                    -- digit
+
+                 -- Christmas Island has one postal code
                  WHEN 'CX' THEN Prefix
+
+                 -- US zip code starts with a 3 digit prefix where first two digits can both be zero
+                 -- Most states have multiple choices
+                 -- Choose one prefix at random
                  WHEN 'US' THEN Prefix::JSON -> managed_code.RANDOM_INT(0, JSON_ARRAY_LENGTH(Prefix::JSON) - 1) #>> '{}' -- First 3 digits
                     || managed_code.RANDOM_INT(0, 9)                    -- Fourth digit
                     || managed_code.RANDOM_INT(0, 9)                    -- Fifth  digit
@@ -101,6 +119,8 @@ BEGIN
                               || managed_code.RANDOM_INT(0, 9) -- Fourth digit
                             ELSE ''                                     -- 90% chance of no plus four
                        END
+
+                 -- Remaining countries have no postal code
                  ELSE NULL
                END CASE
           INTO V_ADDRESS_LINE_1
@@ -339,8 +359,42 @@ BEGIN
                )
          WHERE Country = V_COUNTRY_CODE2
            AND V_REGION_CODE IS NOT DISTINCT FROM Region -- Some countries have NULL region
-         ORDER BY managed_code.RANDOM_INT()
-         LIMIT 1;
+         ORDER
+            BY managed_code.RANDOM_INT()
+         LIMIT 1; -- Each country/region has at least 2 street/city combos to choose from
+
+        -- Set address line 2 and 3 randomly
+        V_ADDRESS_LINE_2 := NULL;
+        V_ADDRESS_LINE_3 := NULL;
+
+        IF V_IS_PERSONAL THEN
+            -- Personal addresses can have apartment / suite numbers
+            -- Generate them 25% of the time
+            SELECT (ARRAY['Apt', 'Suite'])[managed_code.RANDOM_INT(1, 2)] || ' ' || managed_code.RANDOM_INT(1, 9999)
+              INTO V_ADDRESS_LINE_2
+             WHERE managed_code.RANDOM_INT(1, 100) <= 25;
+        ELSE
+            -- Business addresses can have a suite / unit numbers, as well as door / stop numbers
+            -- Generate a line 2 30% of the time
+            SELECT (ARRAY['Suite', 'Unit'])[managed_code.RANDOM_INT(1, 2)] || ' ' || managed_code.RANDOM_INT(1, 9999)
+              INTO V_ADDRESS_LINE_2
+             WHERE managed_code.RANDOM_INT(1, 100) <= 30;
+
+            -- Generate a line 3 10% of the time a line 2 was chosen (10% of 30% = 3% of the time)
+            SELECT (ARRAY['Door' , 'Stop'])[managed_code.RANDOM_INT(1, 2)] || ' ' || managed_code.RANDOM_INT(1, 9)
+              INTO V_ADDRESS_LINE_3
+             WHERE V_ADDRESS_LINE_2 IS NOT NULL
+               AND managed_code.RANDOM_INT(1, 100) <= 10;
+        END IF;
+
+        -- The description and terms are based on the full address
+        V_DESCRIPTION := V_ADDRESS_LINE_1
+                         || COALESCE(' ' || V_ADDRESS_LINE_2, '')
+                         || COALESCE(' ' || V_ADDRESS_LINE_3, '')
+                         || ' ' || V_CITY
+                         || COALESCE(' ' || V_REGION_NAME, '')
+                         || ' ' || V_COUNTRY_NAME
+                         || COALESCE(' ' || V_MAILING_CODE, '');
 
         RAISE NOTICE 'V_BUSINESS_ADDRESS_TYPE_RELIDS = %', V_BUSINESS_ADDRESS_TYPE_RELIDS;
         RAISE NOTICE 'V_COUNTRY_RELID                = %', V_COUNTRY_RELID;
@@ -348,8 +402,34 @@ BEGIN
         RAISE NOTICE 'V_REGION_RELID                 = %', V_REGION_RELID;
         RAISE NOTICE 'V_REGION_CODE                  = %', V_REGION_CODE;
         RAISE NOTICE 'V_ADDRESS_LINE_1               = %', V_ADDRESS_LINE_1;
+        RAISE NOTICE 'V_ADDRESS_LINE_2               = %', V_ADDRESS_LINE_2;
+        RAISE NOTICE 'V_ADDRESS_LINE_3               = %', V_ADDRESS_LINE_3;
         RAISE NOTICE 'V_CITY                         = %', V_CITY;
         RAISE NOTICE 'V_MAILING_CODE                 = %', V_MAILING_CODE;
+        RAISE NOTICE 'V_DESCRIPTION                  = %', V_DESCRIPTION;
+
+        -- Insert address, which may be personal or business
+        INSERT INTO managed_tables.address(
+          description
+         ,address_type_relid
+         ,country_relid
+         ,region_relid
+         ,city
+         ,address
+         ,address_2
+         ,address_3
+         ,mailing_code
+        ) VALUES (
+          V_DESCRIPTION
+         ,V_BUSINESS_ADDRESS_TYPE_RELIDS[V_LOOP_BUSINESS_ADDRESS_TYPE_RELIDS_IX]
+         ,V_COUNTRY_RELID
+         ,V_REGION_RELID
+         ,V_CITY
+         ,V_ADDRESS_LINE_1
+         ,V_ADDRESS_LINE_2
+         ,V_ADDRESS_LINE_3
+         ,V_MAILING_CODE
+        );
     END LOOP; -- V_LOOP_BUSINESS_ADDRESS_TYPE_RELIDS_IX
   END LOOP;   -- V_COUNT_CUSTOMERS
 END;

@@ -49,6 +49,11 @@ $$
 DECLARE
   V_CT TIMESTAMP := NOW() AT TIME ZONE 'UTC';
 BEGIN
+  -- If no terms have been provided, automatically use description
+  IF NEW.terms IS NULL THEN
+    NEW.terms = TO_TSVECTOR('english', NEW.description);
+  END IF;
+
   CASE TG_OP
     WHEN 'INSERT' THEN
       -- Always use next relid in sequence
