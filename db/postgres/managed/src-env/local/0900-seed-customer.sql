@@ -33,12 +33,29 @@ DECLARE
   V_ADDRESS TEXT;
   V_CITY TEXT;
   V_MAILING_CODE TEXT;
+
+  -- Generated address relid
+  V_ADDRESS_RELID BIGINT;
+
+  -- Names that can be used for both first and middle names
+  -- First index is gender [1 = male, 2 = female]
+  -- Second index is name
+  V_FIRST_MIDDLE_NAMES TEXT[][];
+  V_LAST_NAMES TEXT[];
+
+  -- Customer person values
+  V_GENDER_IDX INT;
+  V_FIRST_NAME_INDEX INT;
+  V_MIDDLE_NAME_INDEX INT;
+  V_FIRST_NAME TEXT;
+  V_MIDDLE_NAME TEXT;
+  V_LAST_NAME TEXT;
 BEGIN
   RAISE NOTICE 'C_NUM_CUSTOMERS = %', C_NUM_CUSTOMERS;
 
   FOR V_COUNT_CUSTOMERS IN 1 .. C_NUM_CUSTOMERS LOOP
     -- Choose personal addresses 85% of the time, businesses 15%
-    V_IS_PERSONAL := managed_code.RANDOM_INT(1, 100) <= 85;
+    V_IS_PERSONAL = managed_code.RANDOM_INT(1, 100) <= 85;
 
     -- Business addresses need a random subset of address type relids
     -- If V_IS_PERSONAL is false, 0 rows are selected, causing ARRAY_AGG(relid) to be NULL
@@ -71,9 +88,9 @@ BEGIN
          LIMIT 1;
 
         -- Choose a random region if the country has regions
-        V_REGION_RELID := NULL;
-        V_REGION_NAME  := NULL;
-        V_REGION_CODE  := NULL;
+        V_REGION_RELID = NULL;
+        V_REGION_NAME  = NULL;
+        V_REGION_CODE  = NULL;
         IF V_COUNTRY_HAS_REGIONS THEN
           SELECT relid
                 ,name
@@ -364,8 +381,8 @@ BEGIN
          LIMIT 1; -- Each country/region has at least 2 street/city combos to choose from
 
         -- Set address line 2 and 3 randomly
-        V_ADDRESS_LINE_2 := NULL;
-        V_ADDRESS_LINE_3 := NULL;
+        V_ADDRESS_LINE_2 = NULL;
+        V_ADDRESS_LINE_3 = NULL;
 
         IF V_IS_PERSONAL THEN
             -- Personal addresses can have apartment / suite numbers
@@ -388,7 +405,7 @@ BEGIN
         END IF;
 
         -- The description and terms are based on the full address
-        V_DESCRIPTION := V_ADDRESS_LINE_1
+        V_DESCRIPTION = V_ADDRESS_LINE_1
                          || COALESCE(' ' || V_ADDRESS_LINE_2, '')
                          || COALESCE(' ' || V_ADDRESS_LINE_3, '')
                          || ' ' || V_CITY
@@ -429,7 +446,158 @@ BEGIN
          ,V_ADDRESS_LINE_2
          ,V_ADDRESS_LINE_3
          ,V_MAILING_CODE
-        );
+        ) RETURNING relid INTO V_ADDRESS_RELID;
+
+        RAISE NOTICE 'V_ADDRESS_RELID                = %', V_ADDRESS_RELID;
+
+        IF V_IS_PERSONAL THEN
+            -- Hard-coded list of first/middle names
+            V_FIRST_MIDDLE_NAMES = ARRAY[[
+                'Anna'
+               ,'Britney'
+               ,'Christie'
+               ,'Denise'
+               ,'Elen'
+               ,'Fatima'
+               ,'Gale'
+               ,'Haley'
+               ,'Isabel'
+               ,'Jenny'
+               ,'Kristen'
+               ,'Lisa'
+               ,'Mona'
+               ,'Nancy'
+               ,'Oprah'
+               ,'Patsy'
+               ,'Queenie'
+               ,'Roberta'
+               ,'Selena'
+               ,'Tina'
+               ,'Ursula'
+               ,'Victoria'
+               ,'Wendy'
+               ,'Xena'
+               ,'Yolanda'
+               ,'Zoey'
+               ], [
+                'Alfred'
+               ,'Bob'
+               ,'Caleb'
+               ,'Denny'
+               ,'Edward'
+               ,'Fred'
+               ,'Glen'
+               ,'Howard'
+               ,'Indiana'
+               ,'James'
+               ,'Karl'
+               ,'Leonard'
+               ,'Michael'
+               ,'Norman'
+               ,'Oliver'
+               ,'Patrick'
+               ,'Quentin'
+               ,'Ramsey'
+               ,'Silas'
+               ,'Tim'
+               ,'Umar'
+               ,'Victor'
+               ,'William'
+               ,'Xavier'
+               ,'Yakov'
+               ,'Zachary'
+            ]];
+
+            -- Pick random indexes for gender, first name, and middle name
+            -- If middle name index is 0, it means no middle name
+            V_GENDER_IDX        := managed_code.RANDOM_INT(1, 2);
+            V_FIRST_NAME_INDEX  := managed_code.RANDOM_INT(1, ARRAY_LENGTH(V_FIRST_MIDDLE_NAMES, 2));
+            V_MIDDLE_NAME_INDEX := managed_code.RANDOM_INT(0, ARRAY_LENGTH(V_FIRST_MIDDLE_NAMES, 2));
+
+            -- If first and middle name indexes are the same, then adjust the middle name:
+            -- If it is the first name, choose the second name, else choose the previous name
+            IF V_FIRST_NAME_INDEX = V_MIDDLE_NAME_INDEX THEN
+                V_MIDDLE_NAME_INDEX = managed_code.IIF(V_MIDDLE_NAME_INDEX = 1, 2, V_MIDDLE_NAME_INDEX - 1);
+            END IF;
+
+            -- Get first and middle names
+            V_FIRST_NAME  = V_FIRST_MIDDLE_NAMES[V_GENDER_IDX][V_FIRST_NAME_INDEX];
+            V_MIDDLE_NAME = managed_code.IIF(V_MIDDLE_NAME_INDEX = 0, NULL, V_FIRST_MIDDLE_NAMES[V_GENDER_IDX][V_MIDDLE_NAME_INDEX]);
+
+            -- Hard-coded list of last names
+            V_LAST_NAMES = ARRAY[
+                 'Adair'
+                ,'Adams'
+                ,'Adley'
+                ,'Anderson'
+                ,'Ashley'
+                ,'Bardot'
+                ,'Beckett'
+                ,'Carter'
+                ,'Cassidy'
+                ,'Collymore'
+                ,'Crassus'
+                ,'Cromwell'
+                ,'Curran'
+                ,'Daughtler'
+                ,'Dawson'
+                ,'Ellis'
+                ,'Elsher'
+                ,'Finnegan'
+                ,'Ford'
+                ,'Gasper'
+                ,'Gatlin'
+                ,'Gonzales'
+                ,'Gray'
+                ,'Hansley'
+                ,'Hayes'
+                ,'Hendrix'
+                ,'Hope'
+                ,'Huxley'
+                ,'Jenkins'
+                ,'Keller'
+                ,'Langley'
+                ,'Ledger'
+                ,'Levine'
+                ,'Lennon'
+                ,'Lopez'
+                ,'Madison'
+                ,'Marley'
+                ,'McKenna'
+                ,'Monroe'
+                ,'Pierce'
+                ,'Poverly'
+                ,'Raven'
+                ,'Solace'
+                ,'St. James'
+                ,'Stoll'
+                ,'Thatcher'
+                ,'Verlice'
+                ,'West'
+                ,'Wilson'
+                ,'Zimmerman'
+            ];
+            V_LAST_NAME = V_LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(V_LAST_NAMES, 1))];
+
+            RAISE NOTICE 'V_FIRST_NAME                   = %', V_FIRST_NAME;
+            RAISE NOTICE 'V_MIDDLE_NAME                  = %', V_MIDDLE_NAME;
+            RAISE NOTICE 'V_LAST_NAME                    = %', V_LAST_NAME;
+
+            -- Insert person customer
+            INSERT INTO managed_tables.customer_person(
+                description
+               ,address_relid
+               ,first_name
+               ,middle_name
+               ,last_name
+            ) VALUES (
+                V_FIRST_NAME || COALESCE(' ' || V_MIDDLE_NAME, '') || ' ' || V_LAST_NAME
+               ,V_ADDRESS_RELID
+               ,V_FIRST_NAME
+               ,V_MIDDLE_NAME
+               ,V_LAST_NAME
+            );
+      END IF; -- V_IS_PERSONAL
     END LOOP; -- V_LOOP_BUSINESS_ADDRESS_TYPE_RELIDS_IX
   END LOOP;   -- V_COUNT_CUSTOMERS
 END;
