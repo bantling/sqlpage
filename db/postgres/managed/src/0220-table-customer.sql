@@ -242,14 +242,14 @@ DECLARE
     V_ADDRESS_TYPE_NAME TEXT;
 BEGIN
   -- Get address type relid and name
-  SELECT a.address_type_relid
+  SELECT mta.address_type_relid
         ,mtat.name
     INTO V_ADDRESS_TYPE_RELID
         ,V_ADDRESS_TYPE_NAME
-    FROM managed_tables.address a
+    FROM managed_tables.address mta
     JOIN managed_tables.address_type mtat
-      ON mtat.relid = a.address_type_relid
-   WHERE relid = NEW.address_relid;
+      ON mtat.relid = mta.address_type_relid
+   WHERE mta.relid = NEW.address_relid;
 
   -- The related address must have a type
   IF V_ADDRESS_TYPE_RELID IS NULL THEN
@@ -259,11 +259,9 @@ BEGIN
   -- Check if there already exists a mapping of this business to another address of the same type
   IF EXISTS (
     SELECT 1
-      FROM managed_tables.customer_business_address_jt cbaj
-      JOIN managed_tables.address mtad
-        ON mtad.relid = cbaj.address_relid
-       AND mtad.address_type_relid = V_ADDRESS_TYPE_RELID
-     WHERE cbaj.business_relid = NEW.business_relid
+      FROM managed_tables.customer_business_address_jt mtcbaj
+     WHERE mtcbaj.business_relid = NEW.business_relid
+       AND mtcbaj.address_relid = NEW.address_relid
   ) THEN
     RAISE EXCEPTION 'A customer business cannot have two addresses of the same type: business relid = %, address type = %', NEW.business_relid, V_ADDRESS_TYPE_NAME;
   END IF;
