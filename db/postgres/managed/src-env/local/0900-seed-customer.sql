@@ -4,7 +4,7 @@ SET log_min_messages = NOTICE;
 DO $$
 DECLARE
   -- Get the number of customers to generate
-  C_NUM_CUSTOMERS INT := ${PG_MANAGED_NUM_SEED_CUSTOMERS};
+  C_NUM_CUSTOMERS INT = ${PG_MANAGED_NUM_SEED_CUSTOMERS};
 
   -- C_NUM_CUSTOMERS loop counter
   V_COUNT_CUSTOMERS INT;
@@ -197,7 +197,7 @@ DECLARE
   V_BUSINESS_NAME TEXT;
   V_BUSINESS_RELID BIGINT;
 BEGIN
-  RAISE NOTICE 'C_NUM_CUSTOMERS = %', C_NUM_CUSTOMERS;
+  RAISE NOTICE 'C_NUM_CUSTOMERS                = %', C_NUM_CUSTOMERS;
 
   FOR V_COUNT_CUSTOMERS IN 1 .. C_NUM_CUSTOMERS LOOP
     -- Choose personal customers 85% of the time, businesses 15%
@@ -218,10 +218,58 @@ BEGIN
       -- Personal customers have an address 90% of the time
       V_PERSONAL_HAS_ADDRESS = managed_code.RANDOM_INT(1, 100) <= 90;
       RAISE NOTICE 'V_PERSONAL_HAS_ADDRESS         = %', V_PERSONAL_HAS_ADDRESS;
+        -- Create a customer without an address
+        -- The address loop below only creates a customer after generating an address,
+        -- because the customer contains the address relid
+        --
+        -- Same as the code in the loop below for generating a customer
+        -- Pick random indexes for gender, first name, and middle name
+        -- If middle name index is 0, it means no middle name
+        V_GENDER_IDX        = managed_code.RANDOM_INT(1, 2);
+        V_FIRST_NAME_INDEX  = managed_code.RANDOM_INT(1, ARRAY_LENGTH(C_FIRST_MIDDLE_NAMES, 2));
+        V_MIDDLE_NAME_INDEX = managed_code.RANDOM_INT(0, ARRAY_LENGTH(C_FIRST_MIDDLE_NAMES, 2));
+        RAISE NOTICE 'V_GENDER_IDX                   = %', V_GENDER_IDX;
+        RAISE NOTICE 'V_FIRST_NAME                   = %', V_FIRST_NAME_INDEX;
+        RAISE NOTICE 'V_MIDDLE_NAME_INDEX            = %', V_MIDDLE_NAME_INDEX;
+
+        -- If first and middle name indexes are the same, then adjust the middle name:
+        -- If it is the first name, choose the second name, else choose the previous name
+        IF V_FIRST_NAME_INDEX = V_MIDDLE_NAME_INDEX THEN
+          V_MIDDLE_NAME_INDEX = managed_code.IIF(V_MIDDLE_NAME_INDEX = 1, 2, V_MIDDLE_NAME_INDEX - 1);
+        END IF;
+
+        -- Get first and middle names
+        V_FIRST_NAME  = C_FIRST_MIDDLE_NAMES[V_GENDER_IDX][V_FIRST_NAME_INDEX];
+        V_MIDDLE_NAME = NULL;
+        IF V_MIDDLE_NAME_INDEX > 0 THEN
+          V_MIDDLE_NAME = C_FIRST_MIDDLE_NAMES[V_GENDER_IDX][V_MIDDLE_NAME_INDEX];
+        END IF;
+
+        -- Get last name
+        V_LAST_NAME = C_LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(C_LAST_NAMES, 1))];
+
+        RAISE NOTICE 'V_FIRST_NAME                   = %', V_FIRST_NAME;
+        RAISE NOTICE 'V_MIDDLE_NAME                  = %', V_MIDDLE_NAME;
+        RAISE NOTICE 'V_LAST_NAME                    = %', V_LAST_NAME;
 
       -- For customers with an address, generate a single address
       IF V_PERSONAL_HAS_ADDRESS THEN
         V_LOOP_ADDRESS_UPPER = 1;
+      ELSE
+        -- Insert person customer
+        INSERT INTO managed_tables.customer_person(
+          description
+         ,address_relid
+         ,first_name
+         ,middle_name
+         ,last_name
+        ) VALUES (
+          V_FIRST_NAME || COALESCE(' ' || V_MIDDLE_NAME, '') || ' ' || V_LAST_NAME
+         ,NULL
+         ,V_FIRST_NAME
+         ,V_MIDDLE_NAME
+         ,V_LAST_NAME
+        );
       END IF;
     ELSE
       -- Business addresses need a random subset of address type relids
@@ -634,35 +682,6 @@ BEGIN
       RAISE NOTICE 'V_ADDRESS_RELID                = %', V_ADDRESS_RELID;
 
       IF V_IS_PERSONAL THEN
-        -- Pick random indexes for gender, first name, and middle name
-        -- If middle name index is 0, it means no middle name
-        V_GENDER_IDX        := managed_code.RANDOM_INT(1, 2);
-        V_FIRST_NAME_INDEX  := managed_code.RANDOM_INT(1, ARRAY_LENGTH(C_FIRST_MIDDLE_NAMES, 2));
-        V_MIDDLE_NAME_INDEX := managed_code.RANDOM_INT(0, ARRAY_LENGTH(C_FIRST_MIDDLE_NAMES, 2));
-        RAISE NOTICE 'V_GENDER_IDX                   = %', V_GENDER_IDX;
-        RAISE NOTICE 'V_FIRST_NAME                   = %', V_FIRST_NAME_INDEX;
-        RAISE NOTICE 'V_MIDDLE_NAME_INDEX            = %', V_MIDDLE_NAME_INDEX;
-
-        -- If first and middle name indexes are the same, then adjust the middle name:
-        -- If it is the first name, choose the second name, else choose the previous name
-        IF V_FIRST_NAME_INDEX = V_MIDDLE_NAME_INDEX THEN
-          V_MIDDLE_NAME_INDEX = managed_code.IIF(V_MIDDLE_NAME_INDEX = 1, 2, V_MIDDLE_NAME_INDEX - 1);
-        END IF;
-
-        -- Get first and middle names
-        V_FIRST_NAME  = C_FIRST_MIDDLE_NAMES[V_GENDER_IDX][V_FIRST_NAME_INDEX];
-        V_MIDDLE_NAME = NULL;
-        IF V_MIDDLE_NAME_INDEX > 0 THEN
-          V_MIDDLE_NAME = C_FIRST_MIDDLE_NAMES[V_GENDER_IDX][V_MIDDLE_NAME_INDEX];
-        END IF;
-
-        -- Get last name
-        V_LAST_NAME = C_LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(C_LAST_NAMES, 1))];
-
-        RAISE NOTICE 'V_FIRST_NAME                   = %', V_FIRST_NAME;
-        RAISE NOTICE 'V_MIDDLE_NAME                  = %', V_MIDDLE_NAME;
-        RAISE NOTICE 'V_LAST_NAME                    = %', V_LAST_NAME;
-
         -- Insert person customer
         INSERT INTO managed_tables.customer_person(
           description

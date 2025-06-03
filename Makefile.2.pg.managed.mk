@@ -25,7 +25,7 @@ PG_MANAGED_DB_NAME            := pg_managed
 PG_MANAGED_PASS               := pg_managed_pass
 PG_MANAGED_EXEC_USER          := managed_app_exec
 PG_MANAGED_EXEC_PASS          := pg_managed_exec_pass
-PG_MANAGED_NUM_SEED_CUSTOMERS := 1000
+PG_MANAGED_NUM_SEED_CUSTOMERS := 1_000
 
 #### Targets
 
