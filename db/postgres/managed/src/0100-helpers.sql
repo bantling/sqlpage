@@ -261,26 +261,20 @@ $$ LANGUAGE PLPGSQL;
 --   P_FALSE_VAL: value to return if P_EXPR is false or null
 --
 -- Returns P_TRUE_VAL (which may be null) if P_EXPR is true, else P_FALSE_VAL (which may be null)
--- Raises an exception if P_TRUE_VAL and P_FALSE_VAL are both null
+-- P_TRUE_VAL and P_FALSE_VAL can both be null
 CREATE OR REPLACE FUNCTION managed_code.IIF(P_EXPR BOOLEAN, P_TRUE_VAL ANYELEMENT, P_FALSE_VAL ANYELEMENT) RETURNS ANYELEMENT AS
 $$
-BEGIN 
-  IF (P_TRUE_VAL IS NULL) AND (P_FALSE_VAL IS NULL) THEN
-    RAISE EXCEPTION 'P_TRUE_VAL and P_FALSE_VAL cannot both be null';
-  END IF;
-  
-  RETURN CASE WHEN P_EXPR THEN P_TRUE_VAL ELSE P_FALSE_VAL END;
-END;
-$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+  SELECT CASE WHEN P_EXPR THEN P_TRUE_VAL ELSE P_FALSE_VAL END;
+$$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test IIF
 SELECT *
   FROM (
-    SELECT managed_code.TEST('P_TRUE_VAL and P_FALSE_VAL cannot both be null', 'SELECT managed_code.IIF(TRUE, NULL::TEXT, NULL)')
-     UNION ALL
     SELECT managed_code.TEST(format('managed_code.IIF(%s, %s, %s) must return %s', expr, tval, fval, res), managed_code.IIF(expr, tval, fval) IS NOT DISTINCT FROM res)
       FROM (VALUES
-              (TRUE , NULL, 'b' , NULL)
+              (TRUE , NULL, NULL, NULL)
+             ,(FALSE, NULL, NULL, NULL)
+             ,(TRUE , NULL, 'b' , NULL)
              ,(FALSE, NULL, 'b' , 'b' )
              
              ,(TRUE , 'a', NULL, 'a' )
