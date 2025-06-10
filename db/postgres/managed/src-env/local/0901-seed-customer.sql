@@ -175,29 +175,37 @@ WITH PARAMS AS (
   )
  ,GEN_FIRST_MIDDLE_LAST_NAMES AS (
     SELECT *
-          ,FIRST_MIDDLE_NAMES[GENDER_IDX][FIRST_NAME_IDX] AS FIRST_NAME
-          ,managed_code.IIF(
-             ADJ_MIDDLE_NAME_IDX > 0
-            ,FIRST_MIDDLE_NAMES[GENDER_IDX][ADJ_MIDDLE_NAME_IDX]
-            ,NULL
-           ) AS MIDDLE_NAME
+          ,FIRST_MIDDLE_NAMES[GENDER_IDX][FIRST_NAME_IDX]                      AS FIRST_NAME
+          ,FIRST_MIDDLE_NAMES[GENDER_IDX][ADJ_MIDDLE_NAME_IDX]                 AS MIDDLE_NAME
           ,LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(LAST_NAMES, 1))] AS LAST_NAME
       FROM GEN_ADJUST_MIDDLE_NAME_IDX
   )
   ,I_CUSTOMER_PERSON AS (
     INSERT INTO managed_tables.customer_person(
            description
-          ,address_relid
           ,first_name
           ,middle_name
           ,last_name
          )
     SELECT FIRST_NAME || COALESCE(' ' || MIDDLE_NAME, '') || ' ' || LAST_NAME
-          ,NULL
           ,FIRST_NAME
           ,MIDDLE_NAME
           ,LAST_NAME
       FROM GEN_FIRST_MIDDLE_LAST_NAMES
     RETURNING relid
   )
-SELECT * FROM I_CUSTOMER_PERSON;
+  ,GEN_BUSINESS_NAME AS (
+    SELECT BUSINESS_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(BUSINESS_NAMES, 1))] AS BUSINESS_NAME
+      FROM GEN_IS_PERSONAL
+     WHERE NOT IS_PERSONAL
+  )
+  ,I_CUSTOMER_BUSINESS AS (
+    INSERT INTO managed_tables.customer_business(
+           description
+          ,name
+         )
+    SELECT BUSINESS_NAME
+          ,BUSINESS_NAME
+      FROM GEN_BUSINESS_NAME
+  )
+SELECT 1;

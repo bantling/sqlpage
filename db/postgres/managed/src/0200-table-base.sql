@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS managed_tables.base(
   ,modified    TIMESTAMP(3)
 );
 
+-- Sequence for relids
+CREATE SEQUENCE IF NOT EXISTS managed_tables.base_seq AS BIGINT OWNED BY managed_tables.base.relid;
+
 -- Primary key
 SELECT 'ALTER TABLE managed_tables.base ADD CONSTRAINT base_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -56,10 +59,8 @@ BEGIN
 
   CASE TG_OP
     WHEN 'INSERT' THEN
-      -- Always use next relid in sequence
-      SELECT COALESCE(MAX(relid), 0) + 1
-        INTO NEW.relid
-        FROM managed_tables.base;
+      -- Always use next relid from sequence
+      NEW.relid = NEXTVAL('managed_tables.base_seq');
 
       -- Always atart at version 1
       NEW.version = 1;
