@@ -118,7 +118,7 @@ pg-managed-oci-run:
 # Display logs for running postgres container
 .PHONY: pg-managed-oci-logs
 pg-managed-oci-logs:
-	podman logs $(PG_MANAGED_DEPLOY_NAME) | more
+	podman logs $(PG_MANAGED_DEPLOY_NAME)
 
 # Run psql inside running postgres container as app layer user
 .PHONY: pg-managed-oci-psql

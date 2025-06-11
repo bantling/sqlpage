@@ -1,6 +1,21 @@
+-- Drop the triggers on the affected tables first, and re-enable them later
+-- This cuts the insertion time to about 62%
+ALTER TABLE managed_tables.customer_person   DISABLE TRIGGER ALL;
+ALTER TABLE managed_tables.customer_business DISABLE TRIGGER ALL;
+
 -- Generate customers the fast way, using CTEs
+-- Basic CTE strategy is as follows:
+-- 1. Start with CTEs that select * from previous CTE to build up more and more data to choose from into a single row
+-- 2. GEN_IS_PERSONAL CTE uses generate_series to generate PG_MANAGED_NUM_SEED_CUSTOMERS rows of data
+--    The data indicates if a customer is personal or not (business)
+-- 3. Remaining person CTEs choose individual randomn names for each personal customer
+-- 4. I_CUSTOMER_PERSON CTE inserts random names into customer_person
+-- 5. Some business CTEs draw from  GEN_IS_PERSONAL to generate random names for business customers
+-- 6. I_CUSTOMER_BUSINESS CTE inserts random names into customer_business
+-- 7. Final select just selects constant 1, so that as CTEs evolve, final select does not need to be altered
 WITH PARAMS AS (
   SELECT ${PG_MANAGED_NUM_SEED_CUSTOMERS} AS NUM_CUSTOMERS
+        ,CURRENT_TIMESTAMP AS INS_TIMESTAMP
    WHERE (SELECT COUNT(*) FROM managed_tables.address)           = 0
      AND (SELECT COUNT(*) FROM managed_tables.customer_person)   = 0
      AND (SELECT COUNT(*) FROM managed_tables.customer_business) = 0
@@ -180,32 +195,61 @@ WITH PARAMS AS (
           ,LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(LAST_NAMES, 1))] AS LAST_NAME
       FROM GEN_ADJUST_MIDDLE_NAME_IDX
   )
+  ,GEN_PERSON_DESC AS (
+    SELECT *
+          ,FIRST_NAME || COALESCE(' ' || MIDDLE_NAME, '') || ' ' || LAST_NAME AS DESCRIPTION
+      FROM GEN_FIRST_MIDDLE_LAST_NAMES
+  )
   ,I_CUSTOMER_PERSON AS (
     INSERT INTO managed_tables.customer_person(
-           description
+           relid
+          ,version
+          ,description
+          ,terms
+          ,created
+          ,modified
           ,first_name
           ,middle_name
           ,last_name
          )
-    SELECT FIRST_NAME || COALESCE(' ' || MIDDLE_NAME, '') || ' ' || LAST_NAME
+    SELECT NEXTVAL('managed_tables.base_seq')
+          ,1
+          ,DESCRIPTION
+          ,TO_TSVECTOR('english', DESCRIPTION)
+          ,INS_TIMESTAMP
+          ,INS_TIMESTAMP
           ,FIRST_NAME
           ,MIDDLE_NAME
           ,LAST_NAME
-      FROM GEN_FIRST_MIDDLE_LAST_NAMES
+      FROM GEN_PERSON_DESC
     RETURNING relid
   )
   ,GEN_BUSINESS_NAME AS (
-    SELECT BUSINESS_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(BUSINESS_NAMES, 1))] AS BUSINESS_NAME
+    SELECT *
+          ,BUSINESS_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(BUSINESS_NAMES, 1))] AS BUSINESS_NAME
       FROM GEN_IS_PERSONAL
      WHERE NOT IS_PERSONAL
   )
   ,I_CUSTOMER_BUSINESS AS (
     INSERT INTO managed_tables.customer_business(
-           description
+           relid
+          ,version
+          ,description
+          ,terms
+          ,created
+          ,modified
           ,name
          )
-    SELECT BUSINESS_NAME
+    SELECT NEXTVAL('managed_tables.base_seq')
+          ,1
+          ,BUSINESS_NAME
+          ,TO_TSVECTOR('english', BUSINESS_NAME)
+          ,INS_TIMESTAMP
+          ,INS_TIMESTAMP
           ,BUSINESS_NAME
       FROM GEN_BUSINESS_NAME
   )
 SELECT 1;
+
+ALTER TABLE managed_tables.customer_person   ENABLE TRIGGER ALL;
+ALTER TABLE managed_tables.customer_business ENABLE TRIGGER ALL;
