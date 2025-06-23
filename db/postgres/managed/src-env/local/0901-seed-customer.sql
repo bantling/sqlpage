@@ -14,7 +14,7 @@ ALTER TABLE managed_tables.customer_business DISABLE TRIGGER ALL;
 -- 6. I_CUSTOMER_BUSINESS CTE inserts random names into customer_business
 -- 7. Final select just selects constant 1, so that as CTEs evolve, final select does not need to be altered
 WITH PARAMS AS (
-  SELECT ${PG_MANAGED_NUM_SEED_CUSTOMERS} AS NUM_CUSTOMERS
+  SELECT 1000 AS NUM_CUSTOMERS
         ,CURRENT_TIMESTAMP AS INS_TIMESTAMP
    --WHERE (SELECT COUNT(*) FROM managed_tables.address)           = 0
    --  AND (SELECT COUNT(*) FROM managed_tables.customer_person)   = 0
@@ -163,23 +163,33 @@ WITH PARAMS AS (
 , GEN_IS_PERSONAL AS (
     SELECT *
           ,managed_code.RANDOM_INT(1, 100) <= 85 AS IS_PERSONAL
-          ,generate_series(1, NUM_CUSTOMERS) AS ROW_LINK
+          ,generate_series(1, NUM_CUSTOMERS)     AS ROW_NUM
       FROM ADD_BUSINESS_NAMES
   )
- ,GEN_PERSONAL_HAS_ADDRESS AS (
+, GEN_ROW_LINK AS (
+    SELECT *
+          ,ROW_NUMBER() OVER (PARTITION BY IS_PERSONAL ORDER BY ROW_NUM) AS ROW_LINK
+      FROM GEN_IS_PERSONAL
+  )
+SELECT * FROM GEN_ROW_LINK;
+, GEN_ROW_RUM AS (
+    SELECT *
+          ,ROW_NUMBER() OVER (PARTITION BY IS_PERSONAL ORDER BY ROW_NUM) AS ROW_NUM_BY_TYPE
+      FROM
+, GEN_PERSONAL_HAS_ADDRESS AS (
     SELECT *
           ,managed_code.RANDOM_INT(1, 100) <= 90 AS PERSONAL_HAS_ADDRESS
       FROM GEN_IS_PERSONAL
      WHERE IS_PERSONAL
   )
- ,GEN_PERSONAL_NAME_IDX AS (
+, GEN_PERSONAL_NAME_IDX AS (
     SELECT *
           ,managed_code.RANDOM_INT(1, 2) AS GENDER_IDX
           ,managed_code.RANDOM_INT(1, ARRAY_LENGTH(FIRST_MIDDLE_NAMES, 2)) AS FIRST_NAME_IDX
           ,managed_code.RANDOM_INT(0, ARRAY_LENGTH(FIRST_MIDDLE_NAMES, 2)) AS MIDDLE_NAME_IDX
       FROM GEN_PERSONAL_HAS_ADDRESS
   )
- ,GEN_ADJ_MIDDLE_NAME_IDX AS (
+, GEN_ADJ_MIDDLE_NAME_IDX AS (
     SELECT *
           ,managed_code.IIF(
              FIRST_NAME_IDX = MIDDLE_NAME_IDX
@@ -188,19 +198,19 @@ WITH PARAMS AS (
            ) AS ADJ_MIDDLE_NAME_IDX
       FROM GEN_PERSONAL_NAME_IDX
   )
- ,GEN_FIRST_MIDDLE_LAST_NAMES AS (
+, GEN_FIRST_MIDDLE_LAST_NAMES AS (
     SELECT *
           ,FIRST_MIDDLE_NAMES[GENDER_IDX][FIRST_NAME_IDX]                      AS FIRST_NAME
           ,FIRST_MIDDLE_NAMES[GENDER_IDX][ADJ_MIDDLE_NAME_IDX]                 AS MIDDLE_NAME
           ,LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(LAST_NAMES, 1))] AS LAST_NAME
       FROM GEN_ADJ_MIDDLE_NAME_IDX
   )
-  ,GEN_PERSON_DESC AS (
+, GEN_PERSON_DESC AS (
     SELECT *
           ,FIRST_NAME || COALESCE(' ' || MIDDLE_NAME, '') || ' ' || LAST_NAME AS DESCRIPTION
       FROM GEN_FIRST_MIDDLE_LAST_NAMES
   )
-  ,I_CUSTOMER_PERSON AS (
+, I_CUSTOMER_PERSON AS (
     INSERT INTO managed_tables.customer_person(
            relid
           ,version
@@ -224,13 +234,13 @@ WITH PARAMS AS (
       FROM GEN_PERSON_DESC
     RETURNING relid
   )
-  ,GEN_BUSINESS_NAME AS (
+, GEN_BUSINESS_NAME AS (
     SELECT *
           ,BUSINESS_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(BUSINESS_NAMES, 1))] AS BUSINESS_NAME
       FROM GEN_IS_PERSONAL
      WHERE NOT IS_PERSONAL
   )
-  ,I_CUSTOMER_BUSINESS AS (
+, I_CUSTOMER_BUSINESS AS (
     INSERT INTO managed_tables.customer_business(
            relid
           ,version
