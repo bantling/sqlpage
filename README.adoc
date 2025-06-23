@@ -2,6 +2,11 @@
 :doctype: article
 
 == SQLPage
+ ____   ___  _     ____
+/ ___| / _ \| |   |  _ \ __ _  __ _  ___
+\___ \| | | | |   | |_) / _` |/ _` |/ _ \
+ ___) | |_| | |___|  __/ (_| | (_| |  __/
+|____/ \__\_\_____|_|   \__,_|\__, |\___|
+                              |___/
 
 Learning to use SLQPage to create applications (see https://sql.ophir.dev/index.sql)
-
