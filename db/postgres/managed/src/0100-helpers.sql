@@ -504,6 +504,36 @@ SELECT managed_code.TEST(
 
 
 
+
+---------------------------------------------------------------------------------------------------
+-- RANDOM_CHAR: produce a random char in a specified string
+-- P_STR      : The string to produce a char from
+-- P_CRYPTO   : Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
+-- Generate a random char from a string. See RANDOM_INT for dicussion of randomness.
+-- EG:
+-- P_STR = 'afty': values will be 'a', 'f', 't', or 'y'
+CREATE OR REPLACE FUNCTION managed_code.RANDOM_CHAR(P_STR TEXT, P_CRYPTO BOOLEAN = FALSE) RETURNS TEXT AS
+$$
+  SELECT SUBSTRING(P_STR FROM managed_code.RANDOM_INT(1, LENGTH(P_STR)) FOR 1);
+$$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
+
+-- Test RANDOM_CHAR('afty')
+SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', managed_code.RANDOM_CHAR('afty') IN ('a', 'f', 't', 'y'))
+  FROM GENERATE_SERIES(1, 1000);
+
+-- Test RANDOM_CHAR('a')
+SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''a'') must return a', managed_code.RANDOM_CHAR('a') ='a');
+
+-- Test RANDOM_CHAR('')
+SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR('''') must return ''''', managed_code.RANDOM_CHAR('') = '');
+
+-- Test RANDOM_CHAR(NULL)
+SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', managed_code.RANDOM_CHAR(NULL)IS NULL);
+---------------------------------------------------------------------------------------------------
+
+
+
+
 ---------------------------------------------------------------------------------------------------
 -- TO_8601 converts a TIMESTAMP into an ISO 8601 string of the form
 -- YYYY-MM-DDTHH:MM:SS.sssZ
