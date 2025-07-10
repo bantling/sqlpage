@@ -264,7 +264,7 @@ WITH PARAMS AS (
             ) d
 )
 -- SELECT * FROM ADDRESS_DATA;
-, ADD_PERSON_NAMES AS (
+, ADD_NAMES AS (
     SELECT *
           ,ARRAY[[
                'Anna'
@@ -373,11 +373,6 @@ WITH PARAMS AS (
               ,'Wilson'
               ,'Zimmerman'
              ] AS LAST_NAMES
-      FROM PARAMS
-)
--- SELECT * FROM ADD_PERSON_NAMES;
-, ADD_BUSINESS_NAMES AS (
-    SELECT *
           ,ARRAY[
                '9 Yards Media'
               ,'Aceable, Inc.'
@@ -403,14 +398,20 @@ WITH PARAMS AS (
               ,'What You Will Yoga'
               ,'When Pigs Fly'
              ] AS BUSINESS_NAMES
-      FROM ADD_PERSON_NAMES
+      FROM PARAMS
 )
--- SELECT * FROM ADD_BUSINESS_NAMES;
+-- SELECT * FROM ADD_NAMES;
+, ADD_BUSINESS_ADDRESS_TYPE_RELIDS AS (
+  SELECT *
+        ,(SELECT JSON_AGG(relid) FROM managed_tables.address_type) AS business_address_type_relids
+    FROM ADD_NAMES
+)
+-- SELECT * FROM ADD_BUSINESS_ADDRESS_TYPE_RELIDS;
 , GEN_IS_PERSONAL AS (
     SELECT *
           ,managed_code.RANDOM_INT(1, 100) <= 85 AS IS_PERSONAL
           ,generate_series(1, NUM_CUSTOMERS)     AS ROW_NUM
-      FROM ADD_BUSINESS_NAMES
+      FROM ADD_BUSINESS_ADDRESS_TYPE_RELIDS
   )
 -- SELECT * FROM GEN_IS_PERSONAL;
 , GEN_ROW_LINK AS (
@@ -419,21 +420,21 @@ WITH PARAMS AS (
       FROM GEN_IS_PERSONAL
   )
 -- SELECT * FROM GEN_ROW_LINK;
-, GEN_PERSONAL_HAS_ADDRESS AS (
+, GEN_HAS_ADDRESS AS (
     SELECT *
-          ,managed_code.RANDOM_INT(1, 100) <= 90 AS PERSONAL_HAS_ADDRESS
+          ,managed_code.IIF(IS_PERSONAL    , managed_code.RANDOM_INT(1, 100) <= 90                   , NULL) AS PERSONAL_HAS_ADDRESS
       FROM GEN_ROW_LINK
-     WHERE IS_PERSONAL
   )
--- SELECT * FROM GEN_PERSONAL_HAS_ADDRESS;
-, GEN_PERSONAL_NAME_IDX AS (
+-- SELECT * FROM GEN_HAS_ADDRESS;
+, GEN_NAME_IDX AS (
     SELECT *
-          ,managed_code.RANDOM_INT(1, 2) AS GENDER_IDX
-          ,managed_code.RANDOM_INT(1, ARRAY_LENGTH(FIRST_MIDDLE_NAMES, 2)) AS FIRST_NAME_IDX
-          ,managed_code.RANDOM_INT(0, ARRAY_LENGTH(FIRST_MIDDLE_NAMES, 2)) AS MIDDLE_NAME_IDX
-      FROM GEN_PERSONAL_HAS_ADDRESS
+          ,managed_code.IIF(IS_PERSONAL    , managed_code.RANDOM_INT(1, 2                                  ), NULL) AS GENDER_IDX
+          ,managed_code.IIF(IS_PERSONAL    , managed_code.RANDOM_INT(1, ARRAY_LENGTH(FIRST_MIDDLE_NAMES, 2)), NULL) AS FIRST_NAME_IDX
+          ,managed_code.IIF(IS_PERSONAL    , managed_code.RANDOM_INT(0, ARRAY_LENGTH(FIRST_MIDDLE_NAMES, 2)), NULL) AS MIDDLE_NAME_IDX
+          ,managed_code.IIF(NOT IS_PERSONAL, managed_code.RANDOM_INT(1, ARRAY_LENGTH(BUSINESS_NAMES    , 1)), NULL) AS BUSINESS_NAME_IDX
+      FROM GEN_HAS_ADDRESS
   )
--- SELECT * FROM GEN_PERSONAL_NAME_IDX;
+-- SELECT * FROM GEN_NAME_IDX;
 , GEN_ADJ_MIDDLE_NAME_IDX AS (
     SELECT *
           ,managed_code.IIF(
@@ -441,23 +442,25 @@ WITH PARAMS AS (
             ,managed_code.IIF(MIDDLE_NAME_IDX = 1, 2, MIDDLE_NAME_IDX - 1)
             ,MIDDLE_NAME_IDX
            ) AS ADJ_MIDDLE_NAME_IDX
-      FROM GEN_PERSONAL_NAME_IDX
+      FROM GEN_NAME_IDX
   )
 -- SELECT * FROM GEN_ADJ_MIDDLE_NAME_IDX;
-, GEN_FIRST_MIDDLE_LAST_NAMES AS (
+, GEN_NAMES_TYPES AS (
     SELECT *
-          ,FIRST_MIDDLE_NAMES[GENDER_IDX][FIRST_NAME_IDX]                      AS FIRST_NAME
-          ,FIRST_MIDDLE_NAMES[GENDER_IDX][ADJ_MIDDLE_NAME_IDX]                 AS MIDDLE_NAME
-          ,LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(LAST_NAMES, 1))] AS LAST_NAME
+          ,managed_code.IIF(IS_PERSONAL    , FIRST_MIDDLE_NAMES[GENDER_IDX][FIRST_NAME_IDX]                     , NULL) AS FIRST_NAME
+          ,managed_code.IIF(IS_PERSONAL    , FIRST_MIDDLE_NAMES[GENDER_IDX][ADJ_MIDDLE_NAME_IDX]                , NULL) AS MIDDLE_NAME
+          ,managed_code.IIF(IS_PERSONAL    , LAST_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(LAST_NAMES, 1))], NULL) AS LAST_NAME
+          ,managed_code.IIF(NOT IS_PERSONAL, BUSINESS_NAMES[BUSINESS_NAME_IDX]                                  , NULL) AS BUSINESS_NAME
+          ,managed_code.IIF(NOT IS_PERSONAL, managed_code.RANDOM_SUBSET(business_address_type_relids)           , NULL) AS BUSINESS_ADDRESS_TYPES
       FROM GEN_ADJ_MIDDLE_NAME_IDX
   )
--- SELECT * FROM GEN_FIRST_MIDDLE_LAST_NAMES;
-, GEN_PERSON_DESC AS (
+-- SELECT BUSINESS_NAME, BUSINESS_ADDRESS_TYPES FROM GEN_NAMES_TYPES WHERE NOT IS_PERSONAL;
+, GEN_DESC AS (
     SELECT *
-          ,FIRST_NAME || COALESCE(' ' || MIDDLE_NAME, '') || ' ' || LAST_NAME AS DESCRIPTION
-      FROM GEN_FIRST_MIDDLE_LAST_NAMES
+          ,managed_code.IIF(IS_PERSONAL, FIRST_NAME || COALESCE(' ' || MIDDLE_NAME, '') || ' ' || LAST_NAME, BUSINESS_NAME) AS DESCRIPTION
+      FROM GEN_NAMES_TYPES
   )
--- SELECT * FROM GEN_PERSON_DESC;
+-- SELECT * FROM GEN_DESC;
 , I_CUSTOMER_PERSON AS (
     INSERT INTO managed_tables.customer_person(
            relid
@@ -479,17 +482,11 @@ WITH PARAMS AS (
           ,FIRST_NAME
           ,MIDDLE_NAME
           ,LAST_NAME
-      FROM GEN_PERSON_DESC
+      FROM GEN_DESC
+     WHERE IS_PERSONAL
     RETURNING relid
   )
 -- SELECT * FROM I_CUSTOMER_PERSON;
-, GEN_BUSINESS_NAME AS (
-    SELECT *
-          ,BUSINESS_NAMES[managed_code.RANDOM_INT(1, ARRAY_LENGTH(BUSINESS_NAMES, 1))] AS BUSINESS_NAME
-      FROM GEN_ROW_LINK
-     WHERE NOT IS_PERSONAL
-  )
--- SELECT * FROM GEN_BUSINESS_NAME;
 , I_CUSTOMER_BUSINESS AS (
     INSERT INTO managed_tables.customer_business(
            relid
@@ -507,37 +504,35 @@ WITH PARAMS AS (
           ,INS_TIMESTAMP
           ,INS_TIMESTAMP
           ,BUSINESS_NAME
-      FROM GEN_BUSINESS_NAME
     RETURNING relid
   )
 -- SELECT * FROM I_CUSTOMER_BUSINESS;
-, GEN_PERSONAL_COUNTRY_IDX AS (
+, GET_PERSON_ADDRESS_DATA AS (
     SELECT *
-          ,managed_code.RANDOM_INT(
-             0
-            ,JSON_ARRAY_LENGTH((SELECT d FROM ADDRESS_DATA)) - 1
-           ) country_idx
-      FROM GEN_PERSONAL_HAS_ADDRESS gpha
-     WHERE IS_PERSONAL
-     ORDER BY ROW_LINK
+          ,json_array_elements(managed_code.IIF(managed_code.RANDOM_INT(1, 100) >= 15, managed_code.RANDOM_SUBSET((SELECT d FROM ADDRESS_DATA), 1, 1), NULL))
+--          ,json_array_elements(managed_code.IIF(
+--            IS_PERSONAL,
+--            managed_code.IIF(managed_code.RANDOM_INT(1, 100) >= 15, managed_code.RANDOM_SUBSET((SELECT d FROM ADDRESS_DATA), 1, 1), NULL),
+--            managed_code.RANDOM_SUBSET((SELECT d FROM ADDRESS_DATA), 1, JSON_ARRAY_LENGTH(business_address_type_relids))
+--          )) AS REGIONS
+      FROM GEN_DESC
+      JOIN I_CUSTOMER_PERSON icp
+        ON icp.relid = (SELECT MIN(relid) FROM managed_tables.customer_person) + gd.ROW_LINK - 1
+     WHERE NOT IS_PERSONAL
 )
--- SELECT * FROM GEN_PERSONAL_COUNTRY_IDX;
-, GEN_PERSONAL_REGION_IDX AS (
-    SELECT *
-          ,managed_code.RANDOM_INT(
-             0
-            ,JSON_ARRAY_LENGTH((SELECT d FROM ADDRESS_DATA) -> country_idx) - 1
-           ) region_idx
-      FROM GEN_PERSONAL_COUNTRY_IDX
+SELECT * FROM GET_PERSON_ADDRESS_DATA LIMIT 2;
+--SELECT IS_PERSONAL, json_array_length(REGIONS) numRegions
+--       , REGIONS
+--  FROM GET_ADDRESS_DATA
+-- WHERE
+--       NOT
+--       IS_PERSONAL
+-- LIMIT 1;
+, GET_REGIONS AS (
+    SELECT json_array_elements(COUNTRIES)
+      FROM GET_ADDRESS_DATA;
 )
--- SELECT * FROM GEN_PERSONAL_REGION_IDX;
-, GEN_PERSONAL_COUNTRY_REGION AS (
-    SELECT *
-          ,(SELECT d FROM ADDRESS_DATA) -> country_idx -> region_idx AS country_region
-      FROM GEN_PERSONAL_REGION_IDX
-)
--- SELECT * FROM GEN_PERSONAL_COUNTRY_REGION;
-, GEN_PERSONAL_CIVIC_ST_CITY AS (
+, GEN_CIVIC_ST_CITY AS (
     SELECT *
           ,country_region ->> 'country' AS Country
           ,country_region ->> 'region'  AS Region
@@ -545,9 +540,9 @@ WITH PARAMS AS (
           ,country_region ->> 'st' AS Street
           ,country_region ->> 'city' AS City
           ,country_region -> 'prefix' AS Prefix -- Keep Prefix value as JSON
-      FROM GEN_PERSONAL_COUNTRY_REGION
+      FROM json_array_elements((SELECT COUNTRIES FROM GET_ADDRESS_DATA)
 )
--- SELECT * FROM GEN_PERSONAL_CIVIC_ST_CITY
+-- SELECT * FROM GEN_CIVIC_ST_CITY
 , GEN_PERSONAL_ADDRESS AS (
     SELECT Country
           ,Region

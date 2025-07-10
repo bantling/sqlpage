@@ -535,6 +535,42 @@ SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NU
 
 
 ---------------------------------------------------------------------------------------------------
+-- RANDOM_SUBSET: produce a random subset of a provided JSON array
+-- P_ARR   : The JSON array to get a subset of
+-- P_MIN   : The minimum number of elements of the subset
+-- P_MAX   : The maximum number of elements of the subset
+-- P_CRYPTO: Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
+-- Generate a random char from a string. See RANDOM_INT for dicussion of randomness.
+CREATE OR REPLACE FUNCTION managed_code.RANDOM_SUBSET(P_ARR JSON, P_MIN INT = 1, P_MAX INT = -1) RETURNS JSON AS
+$$
+  WITH ARR_LEN AS (
+    SELECT json_array_length(P_ARR) AS P_LEN
+  )
+  , ADJUST_MIN AS (
+    SELECT *
+          ,CASE WHEN P_MIN < 1 THEN 1 WHEN P_MIN > P_LEN THEN P_LEN ELSE P_MIN END AS ADJ_MIN
+      FROM ARR_LEN
+  )
+  , ADJUST_MAX AS (
+    SELECT *
+          ,CASE WHEN P_MAX < 0 THEN P_LEN WHEN P_MAX < ADJ_MIN THEN ADJ_MIN WHEN P_MAX > P_LEN THEN P_LEN ELSE P_MAX END AS ADJ_MAX
+      FROM ADJUST_MIN
+  )
+  SELECT JSON_AGG(e) e
+    FROM ADJUST_MAX
+        ,(
+           SELECT e
+                 ,ROW_NUMBER() OVER(ORDER BY RANDOM()) r
+             FROM (SELECT json_array_elements(P_ARR) e)
+         )
+   WHERE r BETWEEN ADJ_MIN AND managed_code.RANDOM_INT(ADJ_MIN, ADJ_MAX);
+$$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
+
+-- Test RANDOM_SUBSET('a', 'b', 'c', 'd')
+
+
+
+---------------------------------------------------------------------------------------------------
 -- TO_8601 converts a TIMESTAMP into an ISO 8601 string of the form
 -- YYYY-MM-DDTHH:MM:SS.sssZ
 -- 123456789012345678901234
