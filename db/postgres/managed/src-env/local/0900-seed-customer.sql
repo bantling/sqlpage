@@ -1,4 +1,3 @@
-/*
 -- Seed addresses in a simple way that is not super accurate, but good enough and easy to understand
 SET log_min_messages = NOTICE;
 
@@ -711,4 +710,3 @@ BEGIN
   END LOOP;   -- V_COUNT_CUSTOMERS
 END;
 $$ LANGUAGE plpgsql;
-*/
