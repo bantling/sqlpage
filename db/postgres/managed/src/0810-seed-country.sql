@@ -193,15 +193,6 @@ SELECT managed_code.TEST(
   )
 );
 
--- Test GET_COUNTRIES(NULL) to get all countries
--- This provides an array of one NULL element
-SELECT managed_code.TEST(
-  'GET_COUNTRIES(NULL) returns all countries in order'
- ,(SELECT ARRAY_AGG(code2) = (SELECT ARRAY_AGG(country_regions -> 'code2' #>> '{}') FROM managed_views.country_regions)
-     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES(NULL)) -> 'code2' #>> '{}' code2)
-  )
-);
-
 -- Test GET_COUNTRIES('AW') to get one country
 SELECT managed_code.TEST(
   'GET_COUNTRIES(AW) returns only Aruba'

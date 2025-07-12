@@ -1,4 +1,4 @@
--- Country regions view, where regions is an array of all regions for the country, that is null if there are no regions
+-- Country regions view, where regions is an array of all regions for the country, that is an empty array if there are no regions
 CREATE OR REPLACE VIEW managed_views.country_regions AS
 SELECT JSONB_BUILD_OBJECT(
           'id'                ,managed_code.RELID_TO_ID(c.relid)
