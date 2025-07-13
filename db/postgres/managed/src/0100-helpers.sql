@@ -514,7 +514,7 @@ SELECT managed_code.TEST(
 -- P_STR = 'afty': values will be 'a', 'f', 't', or 'y'
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_CHAR(P_STR TEXT, P_CRYPTO BOOLEAN = FALSE) RETURNS TEXT AS
 $$
-  SELECT SUBSTRING(P_STR FROM managed_code.RANDOM_INT(1, LENGTH(P_STR)) FOR 1);
+  SELECT SUBSTRING(P_STR FROM managed_code.RANDOM_INT(1, LENGTH(P_STR), P_CRYPTO) FOR 1);
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- Test RANDOM_CHAR('afty')
@@ -528,7 +528,7 @@ SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''a'') must return a
 SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR('''') must return ''''', managed_code.RANDOM_CHAR('') = '');
 
 -- Test RANDOM_CHAR(NULL)
-SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', managed_code.RANDOM_CHAR(NULL)IS NULL);
+SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', managed_code.RANDOM_CHAR(NULL) IS NULL);
 ---------------------------------------------------------------------------------------------------
 
 
@@ -541,7 +541,7 @@ SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NU
 -- P_MAX   : The maximum number of elements of the subset
 -- P_CRYPTO: Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
 -- Generate a random char from a string. See RANDOM_INT for dicussion of randomness.
-CREATE OR REPLACE FUNCTION managed_code.RANDOM_SUBSET(P_ARR JSON, P_MIN INT = 1, P_MAX INT = -1) RETURNS JSON AS
+CREATE OR REPLACE FUNCTION managed_code.RANDOM_SUBSET(P_ARR JSON, P_MIN INT = 1, P_MAX INT = -1, P_CRYPTO BOOLEAN = FALSE) RETURNS JSON AS
 $$
   WITH ARR_LEN AS (
     SELECT json_array_length(P_ARR) AS P_LEN
@@ -556,17 +556,18 @@ $$
           ,CASE WHEN P_MAX < 0 THEN P_LEN WHEN P_MAX < ADJ_MIN THEN ADJ_MIN WHEN P_MAX > P_LEN THEN P_LEN ELSE P_MAX END AS ADJ_MAX
       FROM ADJUST_MIN
   )
-  SELECT JSON_AGG(e) e
+  SELECT JSON_AGG(e) subset
     FROM ADJUST_MAX
         ,(
            SELECT e
                  ,ROW_NUMBER() OVER(ORDER BY RANDOM()) r
-             FROM (SELECT json_array_elements(P_ARR) e)
+             FROM json_array_elements(P_ARR) e
          )
-   WHERE r BETWEEN ADJ_MIN AND managed_code.RANDOM_INT(ADJ_MIN, ADJ_MAX);
+   WHERE r BETWEEN ADJ_MIN AND managed_code.RANDOM_INT(ADJ_MIN, ADJ_MAX, P_CRYPTO);
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- Test RANDOM_SUBSET('a', 'b', 'c', 'd')
+
 
 
 
@@ -575,7 +576,7 @@ $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 -- YYYY-MM-DDTHH:MM:SS.sssZ
 -- 123456789012345678901234
 -- This is a 24 char string
-CREATE OR REPLACE FUNCTION managed_code.TO_8601(P_TS TIMESTAMP = NOW() AT TIME ZONE 'UTC') RETURNS VARCHAR(24) AS
+CREATE OR REPLACE FUNCTION managed_code.TO_8601(P_TS TIMESTAMP = NULL) RETURNS VARCHAR(24) AS
 $$
   SELECT TO_CHAR(COALESCE(P_TS, NOW() AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
@@ -742,3 +743,30 @@ SELECT DISTINCT * FROM (
            ,('AzL8n0Y58m7', 9_223_372_036_854_775_807)    
         ) AS t(i, r)
 ) t;
+
+
+
+
+---------------------------------------------------------------------------------------------------
+-- RAISE_MSG raises an error with the given msg
+-- Allow SQL functions to throw errors
+CREATE OR REPLACE FUNCTION managed_code.RAISE_MSG(P_MSG TEXT) RETURNS BOOLEAN AS
+$$
+BEGIN
+  RAISE EXCEPTION '%', P_MSG;
+END;
+$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+
+
+
+
+---------------------------------------------------------------------------------------------------
+-- IS_JSONB_OBJ_ARR tests that the parameter is a JSONB object or array
+-- If not, it raises an exception that "P_NAME is not a JSONB object or array"
+CREATE OR REPLACE FUNCTION managed_code.IS_JSONB_OBJ_ARR(P_NAME TEXT, P_VAL JSONB) RETURNS BOOLEAN AS
+$$
+    SELECT CASE
+             WHEN JSONB_TYPEOF(P_VAL) IN ('object', 'array') THEN TRUE
+             ELSE managed_code.RAISE_MSG(format('% is not a JSONB object or array', P_NAME))
+           END;
+$$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;

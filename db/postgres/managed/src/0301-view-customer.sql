@@ -73,7 +73,7 @@ SELECT JSONB_BUILD_OBJECT(
                            JOIN managed_tables.address_type t
                              ON t.relid = a.address_type_relid
                            JOIN managed_tables.customer_business_address_jt cba
-                             ON cba.business_relid = c.relid
+                             ON cba.business_relid = cb.relid
                             AND cba.address_relid  = a.relid
                         )
        ) customer_business_address
