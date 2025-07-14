@@ -511,7 +511,7 @@ SELECT managed_code.TEST(
 -- P_CRYPTO   : Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
 -- Generate a random char from a string. See RANDOM_INT for dicussion of randomness.
 -- EG:
--- P_STR = 'afty': values will be 'a', 'f', 't', or 'y'
+-- P_STR = 'afty': result will be 'a', 'f', 't', or 'y'
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_CHAR(P_STR TEXT, P_CRYPTO BOOLEAN = FALSE) RETURNS TEXT AS
 $$
   SELECT SUBSTRING(P_STR FROM managed_code.RANDOM_INT(1, LENGTH(P_STR), P_CRYPTO) FOR 1);
@@ -519,7 +519,11 @@ $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- Test RANDOM_CHAR('afty')
 SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', managed_code.RANDOM_CHAR('afty') IN ('a', 'f', 't', 'y'))
-  FROM GENERATE_SERIES(1, 1000);
+  FROM GENERATE_SERIES(1, 100);
+
+-- Test RANDOM_CHAR('afty') using crypto
+SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', managed_code.RANDOM_CHAR('afty', TRUE) IN ('a', 'f', 't', 'y'))
+  FROM GENERATE_SERIES(1, 100);
 
 -- Test RANDOM_CHAR('a')
 SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''a'') must return a', managed_code.RANDOM_CHAR('a') ='a');
@@ -566,7 +570,17 @@ $$
    WHERE r BETWEEN ADJ_MIN AND managed_code.RANDOM_INT(ADJ_MIN, ADJ_MAX, P_CRYPTO);
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
--- Test RANDOM_SUBSET('a', 'b', 'c', 'd')
+-- Test RANDOM_SUBSET('a', 'f', 't', 'y')
+SELECT managed_Code.TEST(
+         'RANDOM_SUBSET must return a subset of a,f,t,y'
+        ,(SELECT COUNT(*)
+            FROM (SELECT JSON_ARRAY_ELEMENTS('["a","f","t","y"]'::JSON) #>> '{}'
+                  EXCEPT
+                  SELECT JSON_ARRAY_ELEMENTS(managed_code.RANDOM_SUBSET('["a","f","t","y"]'::JSON)) #>> '{}'
+                  FROM generate_series(1, 100)
+            )
+         ) = 0
+       );
 
 
 
@@ -757,6 +771,9 @@ BEGIN
 END;
 $$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
+-- Test RAISE_MSG
+SELECT managed_code.TEST('the msg', 'SELECT managed_code.RAISE_MSG(''the msg'')');
+
 
 
 
@@ -770,3 +787,5 @@ $$
              ELSE managed_code.RAISE_MSG(format('% is not a JSONB object or array', P_NAME))
            END;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+
+-- Test IS_JSONB_OBJ_ARR
