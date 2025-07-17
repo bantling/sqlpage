@@ -30,11 +30,7 @@ SELECT JSONB_BUILD_OBJECT(
                            WHERE a.relid = cp.address_relid
                         )
        ) customer_person_address
-  FROM managed_tables.customer_person cp
- ORDER
-    BY  cp.last_name
-       ,cp.first_name
-       ,cp.middle_name;
+  FROM managed_tables.customer_person cp;
 
 -- Join customer_business and their address(es)
 CREATE OR REPLACE VIEW managed_views.customer_business_address AS
@@ -77,6 +73,4 @@ SELECT JSONB_BUILD_OBJECT(
                             AND cba.address_relid  = a.relid
                         )
        ) customer_business_address
-  FROM managed_tables.customer_business cb
- ORDER
-    BY cb.name;
+  FROM managed_tables.customer_business cb;

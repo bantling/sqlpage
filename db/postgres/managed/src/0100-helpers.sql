@@ -779,13 +779,20 @@ SELECT managed_code.TEST('the msg', 'SELECT managed_code.RAISE_MSG(''the msg'')'
 
 ---------------------------------------------------------------------------------------------------
 -- IS_JSONB_OBJ_ARR tests that the parameter is a JSONB object or array
--- If not, it raises an exception that "P_NAME is not a JSONB object or array"
+-- If not, it raises an exception that "<P_NAME> is not a JSONB object or array"
 CREATE OR REPLACE FUNCTION managed_code.IS_JSONB_OBJ_ARR(P_NAME TEXT, P_VAL JSONB) RETURNS BOOLEAN AS
 $$
     SELECT CASE
              WHEN JSONB_TYPEOF(P_VAL) IN ('object', 'array') THEN TRUE
-             ELSE managed_code.RAISE_MSG(format('% is not a JSONB object or array', P_NAME))
+             ELSE managed_code.RAISE_MSG(format('%s is not a JSONB object or array', P_NAME))
            END;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
--- Test IS_JSONB_OBJ_ARR
+-- Test IS_JSONB_OBJ_ARR passes with an object
+SELECT managed_code.TEST('Must be true for a jsonb object', managed_code.IS_JSONB_OBJ_ARR('foo', '{}'::JSONB));
+
+-- Test IS_JSONB_OBJ_ARR passes with an array
+SELECT managed_code.TEST('Must be true for a jsonb array', managed_code.IS_JSONB_OBJ_ARR('foo', '[]'::JSONB));
+
+-- Test IS_JSONB_OBJ_ARR fails with a number
+SELECT managed_code.TEST('foo is not a JSONB object or array', 'SELECT managed_code.IS_JSONB_OBJ_ARR(''foo'', ''0''::JSONB)');
