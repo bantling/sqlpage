@@ -4,9 +4,6 @@ REVOKE CREATE ON SCHEMA public FROM public;
 -- Create tables schema
 CREATE SCHEMA IF NOT EXISTS managed_tables;
 
--- Create views schema
-CREATE SCHEMA IF NOT EXISTS managed_views;
-
 -- managed_app_exec can execute all functions and procedures, and can login with a password for external access
 SELECT $$
 CREATE ROLE managed_app_exec PASSWORD '${PG_MANAGED_EXEC_PASS}' LOGIN

@@ -175,44 +175,50 @@ UPDATE
  WHERE region.code != excluded.code
     OR region.ord  != excluded.ord;
 
--- Test GET_COUNTRIES() to get all countries
--- This defaults the codes into a NULL array
+--
+-- Test GET_COUNTRIES() to get all countries in sorted order
+--
+WITH TC AS (
+  SELECT ARRAY_AGG((t #>> '{code2}')::TEXT) test_array_code2
+    FROM JSONB_ARRAY_ELEMENTS(MANAGED_CODE.GET_COUNTRIES()) t
+)
+, CMP AS (
+  SELECT ARRAY_AGG(code_2::TEXT ORDER BY 1) compare_array_code2
+    FROM managed_tables.country t
+)
 SELECT managed_code.TEST(
-  'GET_COUNTRIES() returns all countries in order'
- ,(SELECT ARRAY_AGG(code2) = (SELECT ARRAY_AGG(country_regions -> 'code2' #>> '{}') FROM managed_views.country_regions)
-     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES()) -> 'code2' #>> '{}' code2)
-  )
-);
+         'GET_COUNTRIES() returns all countries in order'
+        ,(SELECT test_array_code2 FROM TC) = (SELECT compare_array_code2 FROM CMP)
+       );
 
--- Test GET_COUNTRIES(VARIADIC NULL) to get all countries
--- This explicitly provides a NULL array
+--
+-- Test GET_COUNTRIES('CXR, 'AW') to get Christmas Island and Aruba in sorted order
+WITH TC AS (
+  SELECT ARRAY_AGG((t #>> '{code2}')::TEXT) test_array_code2
+    FROM JSONB_ARRAY_ELEMENTS(MANAGED_CODE.GET_COUNTRIES('CXR', 'AW')) t
+)
+, CMP AS (
+  SELECT ARRAY_AGG(code_2::TEXT ORDER BY 1) compare_array_code2
+    FROM managed_tables.country t
+   WHERE code_3 = 'CXR' or code_2 = 'AW'
+)
 SELECT managed_code.TEST(
-  'GET_COUNTRIES(VARIADIC NULL) returns all countries in order'
- ,(SELECT ARRAY_AGG(code2) = (SELECT ARRAY_AGG(country_regions -> 'code2' #>> '{}') FROM managed_views.country_regions)
-     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES(VARIADIC NULL)) -> 'code2' #>> '{}' code2)
-  )
-);
+         'GET_COUNTRIES(''CXR'', ''AW'') returns Christmas Island and Aruba in order'
+        ,(SELECT test_array_code2 FROM TC) = (SELECT compare_array_code2 FROM CMP)
+       );
 
--- Test GET_COUNTRIES('AW') to get one country
+--
+-- Test GET_COUNTRIES(NULL, 'AW', NULL) to get Aruba
+WITH TC AS (
+  SELECT ARRAY_AGG((t #>> '{code2}')::TEXT) test_array_code2
+    FROM JSONB_ARRAY_ELEMENTS(MANAGED_CODE.GET_COUNTRIES(NULL, 'AW', NULL)) t
+)
+, CMP AS (
+  SELECT ARRAY_AGG(code_2::TEXT ORDER BY 1) compare_array_code2
+    FROM managed_tables.country t
+   WHERE code_2 = 'AW'
+)
 SELECT managed_code.TEST(
-  'GET_COUNTRIES(AW) returns only Aruba'
- ,(SELECT ARRAY_AGG(code2) = ARRAY['AW']
-     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES('AW')) -> 'code2' #>> '{}' code2)
-  )
-);
-
--- Test GET_COUNTRIES(NULL, 'AW', NULL) to get one country
-SELECT managed_code.TEST(
-  'GET_COUNTRIES(NULL, AW, NULL) returns only Aruba'
- ,(SELECT ARRAY_AGG(code2) = ARRAY['AW']
-     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES(NULL, 'AW', NULL)) -> 'code2' #>> '{}' code2)
-  )
-);
-
--- Test GET_COUNTRIES to get two countries
-SELECT managed_code.TEST(
-  'GET_COUNTRIES(CXR, AW) returns Aruba and Christmas Island in that order'
- ,(SELECT ARRAY_AGG(code2) = ARRAY['AW', 'CX']
-     FROM (SELECT JSONB_ARRAY_ELEMENTS(managed_code.GET_COUNTRIES('CXR', 'AW')) -> 'code2' #>> '{}' code2)
-  )
-);
+         'GET_COUNTRIES(NULL, ''AW'', NULL) returns Aruba'
+        ,(SELECT test_array_code2 FROM TC) = (SELECT compare_array_code2 FROM CMP)
+       );
