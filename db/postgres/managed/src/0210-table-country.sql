@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS managed_tables.region(
   ,name          TEXT    NOT NULL
   ,code          CHAR(2) NOT NULL
   ,ord           INTEGER NOT NULL
+  ,active        BOOLEAN DEFAULT TRUE
 ) INHERITS(managed_tables.base);
 
 -- Base trigger

@@ -710,3 +710,5 @@ BEGIN
   END LOOP;   -- V_COUNT_CUSTOMERS
 END;
 $$ LANGUAGE plpgsql;
+
+--

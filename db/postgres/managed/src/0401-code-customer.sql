@@ -1,14 +1,14 @@
 ---------------------------------------------------------------------------------------------------
--- GET_CUSTOMER_PERSONS(P_IDS, P_FIRST_NAMES, P_LAST_NAMES, P_ORDER_ID, P_ORDER_FIRST, P_ORDER_LAST, P_PAGE_SIZE, P_PAGE_NUM):
+-- GET_CUSTOMER_PERSONS(P_IDS, P_FIRST_NAMES, P_LAST_NAMES, P_ORDER, P_PAGE_SIZE, P_PAGE_NUM):
 --
 -- Returns a JSONB ARRAY of personal customers and their optional address.
 -- Provide a list of ids, and/or first names, and/or last names to return the selected people.
 -- If no ids or names are provided, all people are listed.
--- P_ORDER_BY is an array containing the following values
+-- P_ORDER is an array containing the following values
 --   id
 --   first name
 --   last name
--- The order of the above strings in the P_ORDER_BY array is significant:
+-- The order of the above strings in the P_ORDER array is significant:
 -- eg, '{first_name, last_name}' sorts by firstname first, then last name
 -- If no ordering is provided, results have no guaranteed order
 -- A page size and number can be used for pagination, where the page number is 1-based.
@@ -30,12 +30,20 @@ $$
 --          ,10::INT P_PAGE_SIZE        --
 --          ,1::INT P_PAGE_NUM          --
 --  ),                                  --
-  WITH --
-  ADJ_PARAMS AS (
+  WITH VALIDATE AS (
+    SELECT managed_code.TEST(
+             'P_PAGE_SIZE and P_PAGE_NUM must be both NULL or both non-NULL and > zero'
+            ,(
+                   ((P_PAGE_SIZE IS NULL) = (P_PAGE_NUM IS NULL))
+               AND ((P_PAGE_SIZE IS NULL) OR ((P_PAGE_SIZE > 0) AND (P_PAGE_NUM > 0)))
+             )
+           ) AS VALID
+  )
+ ,ADJ_PARAMS AS (
     SELECT COALESCE(ARRAY_LENGTH(P_IDS        , 1), 0   ) FILT_IDS_LEN
           ,COALESCE(ARRAY_LENGTH(P_FIRST_NAMES, 1), 0   ) FILT_FNS_LEN
           ,COALESCE(ARRAY_LENGTH(P_LAST_NAMES , 1), 0   ) FILT_LNS_LEN
-          ,COALESCE(P_ORDER                       , NULL) ORD_BY
+          ,P_ORDER                                        ORD_BY
           ,COALESCE(P_PAGE_SIZE                   , 0   ) PAGE_SIZE
           ,COALESCE(P_PAGE_NUM                    , 0   ) PAGE_NUM
 --          ,*      --
@@ -123,15 +131,15 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 
 
 ---------------------------------------------------------------------------------------------------
--- GET_CUSTOMER_BUSINESSES(P_IDS, P_NAMES, P_ORDER_ID, P_ORDER_NAME, P_PAGE_SIZE, P_PAGE_NUM):
+-- GET_CUSTOMER_BUSINESSES(P_IDS, P_NAMES, P_ORDER, P_PAGE_SIZE, P_PAGE_NUM):
 --
 -- Returns a JSONB ARRAY of business customers and their address(es).
 -- Provide a list of ids, and/or names to return the selected businesses.
 -- If no ids or names are provided, all businesses are listed.
--- P_ORDER_BY is an array containing the following values
+-- P_ORDER is an array containing the following values
 --   id
 --   name
--- The order of the above strings in the P_ORDER_BY array is significant:
+-- The order of the above strings in the P_ORDER array is significant:
 -- eg, '{name, id}' sorts by name first, then id
 -- If no ordering is provided, results have no guaranteed order
 -- A page size and number can be used for pagination, where the page number is 1-based.
@@ -155,7 +163,7 @@ $$
   ADJ_PARAMS AS (
     SELECT COALESCE(ARRAY_LENGTH(P_IDS  , 1), 0   ) FILT_IDS_LEN
           ,COALESCE(ARRAY_LENGTH(P_NAMES, 1), 0   ) FILT_NMS_LEN
-          ,COALESCE(P_ORDER                 , NULL) ORD_BY
+          ,P_ORDER                                  ORD_BY
           ,COALESCE(P_PAGE_SIZE             , 0   ) PAGE_SIZE
           ,COALESCE(P_PAGE_NUM              , 0   ) PAGE_NUM
 --          ,*      --
