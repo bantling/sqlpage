@@ -71,11 +71,13 @@ UPDATE
 -- 2. Remove old region and add new regions to hard-coded data
 -- 3. Run the query for hard-coded data to create the new regions
 -- 4. Update all rows that refer to the old region to refer to one of the new regions
+--    This will take research and time, that's why the old region has active = false: no new addresses go into it
 -- 5. Delete the old region, there is no reason to keep it, it will never be used again
 --
 -- If multiple regions are merged into one region:
--- 1. Add the new region to the hard-coded data, remove the old regions, and run this script to create new one
+-- 1. Add the new region to the hard-coded data, remove the old regions from it, and run this script to create new one
 -- 2. Update all rows thet refer to the old regions to refer to the new one
+--    This does not require any research, it can be done immediately
 -- 3. Delete the old regions, there is no reason to keep them, they will never be used again
 
 -- Hard-coded region data

@@ -135,7 +135,7 @@ pg-managed-oci-super:
 pg-managed-oci-bash:
 	podman exec -it $(PG_MANAGED_DEPLOY_NAME) /bin/bash
 
-.PHONY: vars
+.PHONY: pg-managed-vars
 pg-managed-vars:
 	echo ">>> Displaying pg-managed variables"
 	echo "PG_MANAGED_IMAGE_NAME  = $(PG_MANAGED_IMAGE_NAME)"

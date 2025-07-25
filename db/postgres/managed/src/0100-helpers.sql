@@ -778,21 +778,65 @@ SELECT managed_code.TEST('the msg', 'SELECT managed_code.RAISE_MSG(''the msg'')'
 
 
 ---------------------------------------------------------------------------------------------------
--- IS_JSONB_OBJ_ARR tests that the parameter is a JSONB object or array
+-- GET_JSONB_OBJ_ARR tests that the parameter is a JSONB object or array
 -- If not, it raises an exception that "<P_NAME> is not a JSONB object or array"
-CREATE OR REPLACE FUNCTION managed_code.IS_JSONB_OBJ_ARR(P_NAME TEXT, P_VAL JSONB) RETURNS BOOLEAN AS
+-- If so, it returns a table of the single object or object elements of the array
+-- Note that if an array is passed that contains non-object elements, an exception is raised
+CREATE OR REPLACE FUNCTION managed_code.GET_JSONB_OBJ_ARR(P_NAME TEXT, P_VAL JSONB) RETURNS SETOF JSONB AS
 $$
-    SELECT CASE
-             WHEN JSONB_TYPEOF(P_VAL) IN ('object', 'array') THEN TRUE
-             ELSE managed_code.RAISE_MSG(format('%s is not a JSONB object or array', P_NAME))
-           END;
+  WITH CHK_TYP AS (
+     SELECT JSONB_TYPEOF(P_VAL) AS jsonb_typ
+  )
+ ,VALIDATE AS (
+    SELECT *
+          ,CASE
+             WHEN jsonb_typ IN ('object', 'array') THEN TRUE
+             ELSE managed_code.RAISE_MSG(format('%s is not a JSONB object or array of objects', P_NAME))
+           END AS v
+      FROM CHK_TYP
+  )
+ ,OBJ_ARR AS (
+    SELECT *
+          ,managed_code.IIF(jsonb_typ = 'object', P_VAL, NULL) jsonb_obj
+          ,managed_code.IIF(jsonb_typ = 'array' , P_VAL, NULL) jsonb_arr
+      FROM VALIDATE
+  )
+ ,ELEMENTS AS (
+    SELECT jsonb_obj AS obj
+      FROM OBJ_ARR
+     WHERE jsonb_obj IS NOT NULL
+     UNION ALL
+    SELECT JSONB_ARRAY_ELEMENTS(jsonb_arr)
+      FROM OBJ_ARR
+ )
+ SELECT managed_code.IIF(
+          JSONB_TYPEOF(obj) = 'object'
+         ,obj
+         ,managed_code.RAISE_MSG(format('%s is not a JSONB object or array of objects', P_NAME))::text::jsonb
+        )
+   FROM ELEMENTS;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
--- Test IS_JSONB_OBJ_ARR passes with an object
-SELECT managed_code.TEST('Must be true for a jsonb object', managed_code.IS_JSONB_OBJ_ARR('foo', '{}'::JSONB));
+-- Test GET_JSONB_OBJ_ARR(object) returns one row with the object
+SELECT managed_code.TEST(
+  'Returns one row for object'
+ ,managed_code.GET_JSONB_OBJ_ARR('p', '{"a":"b","c":"d"}') = '{"a":"b","c":"d"}'
+);
 
--- Test IS_JSONB_OBJ_ARR passes with an array
-SELECT managed_code.TEST('Must be true for a jsonb array', managed_code.IS_JSONB_OBJ_ARR('foo', '[]'::JSONB));
+-- Test GET_JSONB_OBJ_ARR(array) returns one row for each element of the array
+SELECT managed_code.TEST(
+  'Returns one row for array of one object'
+ ,managed_code.GET_JSONB_OBJ_ARR('p', '[{"a":"b","c":"d"}]') = '{"a":"b","c":"d"}'
+);
 
--- Test IS_JSONB_OBJ_ARR fails with a number
-SELECT managed_code.TEST('foo is not a JSONB object or array', 'SELECT managed_code.IS_JSONB_OBJ_ARR(''foo'', ''0''::JSONB)');
+-- Test GET_JSONB_OBJ_ARR(number) fails
+SELECT managed_code.TEST(
+  'p is not a JSONB object or array of objects'
+ ,$$SELECT managed_code.GET_JSONB_OBJ_ARR('p', '1')$$
+);
+
+-- Test GET_JSONB_OBJ_ARR([number]) fails
+SELECT managed_code.TEST(
+  'p is not a JSONB object or array of objects'
+ ,$$SELECT managed_code.GET_JSONB_OBJ_ARR('p', '[1]')$$
+);

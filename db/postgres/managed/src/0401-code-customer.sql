@@ -66,30 +66,32 @@ $$
  ,ORDERED AS (
     SELECT *
           ,ROW_NUMBER() OVER(
-             ORDER BY CASE ORD_BY[1]
-                        WHEN 'id'         THEN f.relid::TEXT
-                        WHEN 'first_name' THEN f.first_name
-                        WHEN 'last_name'  THEN f.last_name
-                        ELSE NULL
-                       END
-            ,         CASE ORD_BY[2]
-                        WHEN 'id'         THEN f.relid::TEXT
-                        WHEN 'first_name' THEN f.first_name
-                        WHEN 'last_name'  THEN f.last_name
-                        ELSE NULL
-                       END
-            ,         CASE ORD_BY[3]
-                        WHEN 'id'         THEN f.relid::TEXT
-                        WHEN 'first_name' THEN f.first_name
-                        WHEN 'last_name'  THEN f.last_name
-                        ELSE NULL
-                       END
+             ORDER
+                BY CASE ORD_BY[1]
+                     WHEN 'id'         THEN f.relid::TEXT
+                     WHEN 'first_name' THEN f.first_name
+                     WHEN 'last_name'  THEN f.last_name
+                     ELSE NULL
+                     END
+            ,       CASE ORD_BY[2]
+                      WHEN 'id'         THEN f.relid::TEXT
+                      WHEN 'first_name' THEN f.first_name
+                      WHEN 'last_name'  THEN f.last_name
+                      ELSE NULL
+                     END
+            ,       CASE ORD_BY[3]
+                      WHEN 'id'         THEN f.relid::TEXT
+                      WHEN 'first_name' THEN f.first_name
+                      WHEN 'last_name'  THEN f.last_name
+                      ELSE NULL
+                     END
            ) - 1 AS ROW_NUM
       FROM FILTERED f
   )
 --  SELECT * FROM ORDERED; --
   ,CPA_JSON AS (
-     SELECT JSONB_STRIP_NULLS(JSONB_BUILD_OBJECT(
+     SELECT *
+           ,JSONB_STRIP_NULLS(JSONB_BUILD_OBJECT(
               'id'          ,managed_code.RELID_TO_ID(o.relid)
              ,'version'     ,o.version
              ,'created'     ,o.created
@@ -118,12 +120,12 @@ $$
                             )
             )) customer_person_address
        FROM ORDERED o
-      WHERE ((PAGE_SIZE = 0) OR (PAGE_NUM = 0)) OR (ROW_NUM BETWEEN PAGE_SIZE * (PAGE_NUM - 1) AND (PAGE_SIZE * PAGE_NUM) - 1)
-      ORDER
-         BY ROW_NUM
+      WHERE (PAGE_SIZE = 0)
+         OR (PAGE_NUM = 0)
+         OR (ROW_NUM BETWEEN PAGE_SIZE * (PAGE_NUM - 1) AND (PAGE_SIZE * PAGE_NUM) - 1)
   )
 --  SELECT * FROM CPA_JSON; --
-  SELECT JSONB_AGG(customer_person_address)
+  SELECT JSONB_AGG(customer_person_address ORDER BY ROW_NUM)
     FROM CPA_JSON;
 $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 
@@ -184,22 +186,24 @@ $$
  ,ORDERED AS (
     SELECT *
           ,ROW_NUMBER() OVER(
-             ORDER BY CASE ORD_BY[1]
-                        WHEN 'id'   THEN f.relid::TEXT
-                        WHEN 'name' THEN f.name
-                        ELSE NULL
-                       END
-            ,         CASE ORD_BY[2]
-                        WHEN 'id'   THEN f.relid::TEXT
-                        WHEN 'name' THEN f.name
-                        ELSE NULL
-                       END
+             ORDER
+                BY CASE ORD_BY[1]
+                     WHEN 'id'   THEN f.relid::TEXT
+                     WHEN 'name' THEN f.name
+                     ELSE NULL
+                    END
+                  ,CASE ORD_BY[2]
+                     WHEN 'id'   THEN f.relid::TEXT
+                     WHEN 'name' THEN f.name
+                     ELSE NULL
+                    END
            ) - 1 AS ROW_NUM
       FROM FILTERED f
   )
 --  SELECT * FROM ORDERED; --
   ,CBA_JSON AS (
-     SELECT JSONB_STRIP_NULLS(JSONB_BUILD_OBJECT(
+     SELECT *
+           ,JSONB_STRIP_NULLS(JSONB_BUILD_OBJECT(
               'id'        ,managed_code.RELID_TO_ID(o.relid)
              ,'version'   ,o.version
              ,'created'   ,o.created
@@ -233,12 +237,12 @@ $$
                            )
             )) customer_business_addresses
        FROM ORDERED o
-      WHERE ((PAGE_SIZE = 0) OR (PAGE_NUM = 0)) OR (ROW_NUM BETWEEN PAGE_SIZE * (PAGE_NUM - 1) AND (PAGE_SIZE * PAGE_NUM) - 1)
-      ORDER
-         BY ROW_NUM
+      WHERE (PAGE_SIZE = 0)
+         OR (PAGE_NUM  = 0)
+         OR (ROW_NUM BETWEEN PAGE_SIZE * (PAGE_NUM - 1) AND (PAGE_SIZE * PAGE_NUM) - 1)
   )
 --  SELECT * FROM CBA_JSON; --
-  SELECT JSONB_AGG(customer_business_addresses)
+  SELECT JSONB_AGG(customer_business_addresses ORDER BY ROW_NUM)
     FROM CBA_JSON;
 $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 
@@ -260,8 +264,10 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 ---------------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION managed_code.SET_CUSTOMER_PERSONS(P_CUSTOMER_PERSONS JSONB) RETURNS JSONB AS
 $$
-  WITH VALIDATE AS (
-    SELECT managed_code.IS_JSONB_OBJ_ARR('P_CUSTOMER_PERSONS',  P_CUSTOMER_PERSONS)
+  WITH OBJECTS AS (
+    SELECT get_jsonb_obj_arr AS obj
+      FROM managed_code.GET_JSONB_OBJ_ARR('P_CUSTOMER_PERSONS', P_CUSTOMER_PERSONS)
   )
-  SELECT NULL::JSONB;
+  SELECT obj
+    FROM OBJECTS;
 $$ LANGUAGE sql;
