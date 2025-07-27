@@ -257,17 +257,161 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 -- {
 --    "id"           : "<customer id>"
 --   ,"addressId"    : "<address id>"
---   ,"customerError": "<error message>"
---   ,"addressError" : "<error message>"
+--   ,"error"        : "<error message>" (only if customer failed)
+--   ,"addressError" : "<error message>" (only if address  failed)
 -- }
--- where the id and addressId are returned whether a person was created or updated
+--
+-- If a customer address fails to upsert, the customer is not upserted either
+--
+-- id and addressId are each returned in two cases:
+--  - The upsert was successful
+--  - It was provided
+--
+-- The caller can line up each result with the original data provided via the array index
 ---------------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION managed_code.SET_CUSTOMER_PERSONS(P_CUSTOMER_PERSONS JSONB) RETURNS JSONB AS
 $$
-  WITH OBJECTS AS (
-    SELECT get_jsonb_obj_arr AS obj
-      FROM managed_code.GET_JSONB_OBJ_ARR('P_CUSTOMER_PERSONS', P_CUSTOMER_PERSONS)
-  )
-  SELECT obj
-    FROM OBJECTS;
-$$ LANGUAGE sql;
+DECLARE
+  -- customer_person fields
+  V_PERSON        JSONB;
+  V_PERSON_ID     VARCHAR(11);
+  V_PERSON_RELID  BIGINT;
+
+  -- address fields
+  V_ADDRESS       JSONB;
+  V_ADDRESS_ID    VARCHAR(11);
+  V_ADDRESS_RELID BIGINT;
+  V_COUNTRY_RELID BIGINT;
+  V_REGION_RELID  BIGINT;
+
+  -- Error
+  V_ERR_TEXT      TEXT;
+  V_RES           JSONB;
+  V_RESULTS       JSONB := '[]';
+BEGIN
+  <<MAIN_LOOP>>
+  FOR V_PERSON IN SELECT managed_code.GET_JSONB_OBJ_ARR(P_CUSTOMER_PERSONS) LOOP
+    -- Get person relid, if provided
+    V_PERSON_ID    := VPERSON #>> '{id}';
+    V_PERSON_RELID := managed_code.ID_TO_RELID(V_PERSON_ID);
+
+    -- Address transaction
+    BEGIN
+      -- Since a person can only have one address, the customer_person has an address_relid column
+      -- Insert address first
+      -- If no id is provided, we insert, else we update
+      V_ADDRESS       := V_PERSON  #>  '{address}';
+      V_ADDRESS_ID    := V_ADDRESS #>> '{id}';
+      V_ADDRESS_RELID := manaaged_code.ID_TO_RELID(V_ADDRESS_ID);
+
+      -- Get country and region ids, we refer to them multiple times
+      SELECT relid INTO V_COUNTRY_RELID
+        FROM managed_tables.country
+       WHERE V_ADDRESS #>> '{country}' IN (code_2, code_3);
+
+      SELECT relid INTO V_REGION_RELID
+        FROM managed_tables.region
+       WHERE country_relid            = V_COUNTRY_RELID
+         AND V_ADDRESS #>> '{region}' = code;
+
+      -- Start with empty error object
+      V_ERROR := '{}';
+
+      -- If we know the address id, add it to the error object
+      IF V_ADDRESS_ID IS NOT NULL THEN
+        V_ERROR := VERROR || format('{"address_Id": "%"}', V_ADDRESS_ID);
+      END IF;
+
+      -- Upsert address, grabbing the relid in case it is an insert
+      -- Catch any exception for this upsert so we can add the error
+      INSERT INTO managed_tables.address(
+        relid
+       ,description
+       ,terms
+       ,extra
+       ,country_relid
+       ,region_relid
+       ,city
+       ,address
+       ,mailing_code
+      ) VALUES (
+        V_ADDRESS_RELID
+       ,V_ADDRESS #>> '{description}'
+       ,V_ADDRESS #>> '{terms}'
+       ,V_ADDRESS #>> '{extra}'
+       ,V_COUNTRY_RELID
+       ,V_REGION_RELID
+       ,V_ADDRESS #>> '{city}'
+       ,V_ADDRESS #>> '{address}'
+       ,V_ADDRESS #>> '{mailing_code}'
+      )
+      ON CONFLICT(relid)
+      DO UPDATE SET description   = V_ADDRESS #>> '{description}'
+                   ,terms         = V_ADDRESS #>> '{terms}'
+                   ,extra         = V_ADDRESS #>> '{extra}'
+                   ,country_relid = V_COUNTRY_RELID
+                   ,region_relid  = V_REGION_RELID
+                   ,city          = V_ADDRESS #>> '{city}'
+                   ,address       = V_ADDRESS #>> '{address}'
+                   ,mailing_code  = V_ADDRESS #>> '{mailing_code}'
+      RETURNING relid INTO V_ADDRESS_RELID;
+
+      -- Add id to error
+      V_ADDRESS_ID := managed_code.RELID_TO_ID(V_ADDRESS_RELID);
+      V_ERROR := V_ERROR || format('{"addressId": "%"}', V_ADDRESS_ID);
+    EXCEPTION
+      WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS V_ERR = MESSAGE_TEXT;
+        V_ERRORS := V_ERRORS || format('{"addressError": "%"}', V_ERR);
+
+        -- No point in trying to upsert the person if the address failed
+        CONTINUE MAIN_LOOP;
+    END;
+
+    -- Person Customer transaction
+    BEGIN
+      -- Get person relid
+      V_PERSON_ID    := VPERSON #>> '{id}';
+      V_PERSON_RELID := managed_code.ID_TO_RELID(V_PERSON_ID);
+
+      -- Next, upsert the person
+      INSERT INTO managed_tables.customer_person(
+        relid
+       ,description
+       ,terms
+       ,extra
+       ,address_relid
+       ,first_name
+       ,middle_name
+       ,last_name
+      ) VALUES (
+        V_PERSON_RELID
+       ,V_PERSON #>> '{description}'
+       ,V_PERSON #>> '{terms}'
+       ,V_PERSON #>> '{extra}'
+       ,V_ADDRESS_RELID
+       ,V_PERSON #>> '{first_name}'
+       ,V_PERSON #>> '{middle_name}'
+       ,V_PERSON #>> '{last_name}'
+      )
+      ON CONFLICT(relid)
+      DO UPDATE SET description   = V_PERSON #>> '{description}'
+                   ,terms         = V_PERSON #>> '{terms}'
+                   ,extra         = V_PERSON #>> '{extra}'
+                   ,address_relid = V_ADDRESS_RELID
+                   ,first_name    = V_PERSON #>> '{first_name}'
+                   ,middle_name   = V_PERSON #>> '{middle_name}'
+                   ,last_name     = V_PERSON #>> '{last_name}'
+      RETURNING relid INTO V_PERSON_RELID;
+
+      -- Add id to error
+      V_PERSON_ID := managed_code.RELID_TO_ID(V_PERSON_RELID);
+      V_ERROR := V_ERROR || format('{"id": "%"}', V_PERSON_ID);
+    EXCEPTION
+      WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS V_ERR = MESSAGE_TEXT;
+        V_ERRORS := V_ERRORS || format('{"error": "%"}', V_ERR);
+    END;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
