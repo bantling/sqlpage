@@ -675,7 +675,7 @@ SELECT DISTINCT * FROM (
 -- ID_TO_RELID converts a base 62 string with a maximum of 11 chars to a BIGINT
 -- Maximum ID is AzL8n0Y58m7 -> signed BIGINT value is 9_223_372_036_854_775_807 
 --               12345678901
--- Raises an exception if P_ID is NULL or 0, since valid ids start at 1
+-- Raises an exception if P_ID <= 0, since valid ids start at 1
 -- Uses C collation for ASCII case-sensitive sorting regardless of database collation
 CREATE OR REPLACE FUNCTION managed_code.ID_TO_RELID(P_ID VARCHAR(11)) RETURNS BIGINT AS
 $$
@@ -700,9 +700,14 @@ DECLARE
   V_ASCII_DIGIT INT;
   V_RELID       BIGINT := 0;
 BEGIN
-  -- P_ID cannot be null or empty
-  IF LENGTH(COALESCE(V_ID,'')) = 0 THEN
-    RAISE EXCEPTION 'P_ID cannot be null or empty';
+  -- P_ID may be null
+  IF V_ID IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  -- P_ID cannot be empty string
+  IF LENGTH(V_ID) = 0 THEN
+    RAISE EXCEPTION 'P_ID cannot be empty';
   END IF;
   
   -- P_ID must be >= '1' and <= 'AzL8n0Y58m7'
@@ -732,8 +737,7 @@ $$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 SELECT DISTINCT * FROM (
   SELECT managed_code.TEST(msg, q)
     FROM (VALUES
-            ('P_ID cannot be null or empty', 'SELECT managed_code.ID_TO_RELID(NULL)')
-           ,('P_ID cannot be null or empty', 'SELECT managed_code.ID_TO_RELID('''')')
+            ('P_ID cannot be empty', 'SELECT managed_code.ID_TO_RELID('''')')
 
            ,('P_ID must be in the range [1 .. AzL8n0Y58m7]', 'SELECT managed_code.ID_TO_RELID(''0'')'          )
            ,('P_ID must be in the range [1 .. AzL8n0Y58m7]', 'SELECT managed_code.ID_TO_RELID(''AzL8n0Y58m8'')')
@@ -744,9 +748,10 @@ SELECT DISTINCT * FROM (
            ,('P_ID digit ''{'' (ASCII 0x7B) is invalid: only characters in the ranges of 0..9, A..Z, and a..z are valid', 'SELECT managed_code.ID_TO_RELID(''111{'')')
          ) AS t(msg, q)
    UNION ALL
-  SELECT managed_code.TEST(format('ID_TO_RELID must return %s', r), managed_code.ID_TO_RELID(i) = r)
+  SELECT managed_code.TEST(format('ID_TO_RELID must return %s', r), managed_code.ID_TO_RELID(i) IS NOT DISTINCT FROM r)
     FROM (VALUES
-            ('1'          , 1                        )
+            (NULL         , NULL                     )
+           ,('1'          , 1                        )
            ,('9'          , 9                        )
            ,('A'          , 10                       )
            ,('Z'          , 10 + 25                  )
