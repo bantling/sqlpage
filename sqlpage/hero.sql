@@ -1,0 +1,1 @@
+select 'hero' as component, 'example hero' as description, 'example title' as title;

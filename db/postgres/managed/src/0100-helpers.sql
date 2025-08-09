@@ -611,7 +611,8 @@ SELECT managed_code.TEST(msg, managed_code.IIF(ARRAY_LENGTH(ARG, 1) = 0, managed
 -- RELID_TO_ID converts a BIGINT to a base 62 string with a maximum of 11 chars
 -- Maximum signed BIGINT value is 9_223_372_036_854_775_807 -> AzL8n0Y58m7
 --                                                             12345678901
--- Raises an exception if P_RELID is NULL or < 1, since valid relids start at 1
+-- Raises an exception if P_RELID is < 1, since valid relids start at 1
+-- Returns NULL if relid is NULL
 CREATE OR REPLACE FUNCTION managed_code.RELID_TO_ID(P_RELID BIGINT) RETURNS VARCHAR(11) AS
 $$
 DECLARE
@@ -620,8 +621,8 @@ DECLARE
   V_ID VARCHAR(11) = '';
   V_RMDR INT;
 BEGIN
-  IF COALESCE(V_RELID, 0) < 1 THEN
-    RAISE EXCEPTION 'P_RELID cannot be NULL or < 1';
+  IF V_RELID < 1 THEN
+    RAISE EXCEPTION 'P_RELID cannot be < 1';
   END IF;
 
   WHILE V_RELID > 0 LOOP
@@ -640,19 +641,19 @@ BEGIN
   
   RETURN V_ID;
 END;
-$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 
 --- Test RELID_TO_ID
 SELECT DISTINCT * FROM (
-  SELECT managed_code.TEST('P_RELID cannot be NULL or < 1', q)
+  SELECT managed_code.TEST('P_RELID cannot be < 1', q)
     FROM (VALUES
-            ('SELECT managed_code.RELID_TO_ID(NULL)')
-           ,('SELECT managed_code.RELID_TO_ID(0)'   )
+            ('SELECT managed_code.RELID_TO_ID(0)'   )
            ,('SELECT managed_code.RELID_TO_ID(-1)'  )
          ) AS t(q)
    UNION ALL
-  SELECT managed_code.TEST(format('RELID_TO_ID(%s) must return %s', r, i), managed_code.RELID_TO_ID(r) = i)
+  SELECT managed_code.TEST(format('RELID_TO_ID(%s) must return %s', r, i), managed_code.RELID_TO_ID(r) IS NOT DISTINCT FROM i)
     FROM (VALUES
+           (NULL                     , NULL         ),
            (1                        , '1'          ),
            (9                        , '9'          ),
            (10                       , 'A'          ),
@@ -676,6 +677,7 @@ SELECT DISTINCT * FROM (
 -- Maximum ID is AzL8n0Y58m7 -> signed BIGINT value is 9_223_372_036_854_775_807 
 --               12345678901
 -- Raises an exception if P_ID <= 0, since valid ids start at 1
+-- A NULL is returns NULL
 -- Uses C collation for ASCII case-sensitive sorting regardless of database collation
 CREATE OR REPLACE FUNCTION managed_code.ID_TO_RELID(P_ID VARCHAR(11)) RETURNS BIGINT AS
 $$
@@ -700,11 +702,6 @@ DECLARE
   V_ASCII_DIGIT INT;
   V_RELID       BIGINT := 0;
 BEGIN
-  -- P_ID may be null
-  IF V_ID IS NULL THEN
-    RETURN NULL;
-  END IF;
-
   -- P_ID cannot be empty string
   IF LENGTH(V_ID) = 0 THEN
     RAISE EXCEPTION 'P_ID cannot be empty';
@@ -731,7 +728,7 @@ BEGIN
   
   RETURN V_RELID;
 END;
-$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 
 --- Test ID_TO_RELID
 SELECT DISTINCT * FROM (

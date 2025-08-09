@@ -59,8 +59,12 @@ BEGIN
 
   CASE TG_OP
     WHEN 'INSERT' THEN
-      -- Always use next relid from sequence
-      NEW.relid = NEXTVAL('managed_tables.base_seq');
+      -- If relid is NULL, use next relid from sequence
+      -- Otherwise, use relid as is, assuming it exists
+      IF NEW.relid IS NULL THEN
+        NEW.relid = NEXTVAL('managed_tables.base_seq');
+      END IF;
+--      RAISE DEBUG 'BASE_TG_FN: NEW.relid = %', NEW.relid;
 
       -- Always atart at version 1
       NEW.version = 1;
@@ -71,6 +75,7 @@ BEGIN
   
     WHEN 'UPDATE' THEN
       -- The new and old relids have to match
+--      RAISE DEBUG 'BASE_TG_FN: NEW.relid = %, OLD.relid = %', NEW.relid, OLD.relid;
       IF NEW.relid != OLD.relid THEN
         RAISE EXCEPTION 'The relid cannot be changed from % to %', OLD.relid, NEW.relid;
       END IF;
@@ -142,7 +147,7 @@ BEGIN
            ,modified
            ,stuff
        ) VALUES(
-            2
+            NULL
            ,3
            ,'desc'
            ,TO_TSVECTOR('english', 'dude looks like a lady')
@@ -154,7 +159,7 @@ BEGIN
        RETURNING relid  , version  , description  , terms  , extra  , created  , modified  , stuff
             INTO V_RELID, V_VERSION, V_DESCRIPTION, V_TERMS, V_EXTRA, V_CREATED, V_MODIFIED, V_STUFF;
 
-       PERFORM managed_code.TEST('relid must be 1, not 2', V_RELID = 1);
+       PERFORM managed_code.TEST('relid must be 1', V_RELID = 1);
        PERFORM managed_code.TEST('version must be 1, not 3', V_VERSION = 1);
        PERFORM managed_code.TEST('description must be desc, not ' || V_DESCRIPTION, V_DESCRIPTION = 'desc');
        PERFORM managed_code.TEST('terms must be dude looks like a lady, not ' || V_TERMS::TEXT, V_TERMS = TO_TSVECTOR('english', 'dude looks like a lady'));

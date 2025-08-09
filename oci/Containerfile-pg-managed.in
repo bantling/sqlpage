@@ -23,3 +23,7 @@ COPY src/* /docker-entrypoint-initdb.d
 # Note that in the sed command, the text to search for have the opening ${ and closing } enclosed in square brackets, so
 # that they are literal sequences to search for.
 RUN find /docker-entrypoint-initdb.d -type f -name '*.sql' -exec sed -i 's,[$][{]PG_MANAGED_EXEC_PASS[}],'${PG_MANAGED_EXEC_PASS}',;s,[$][{]PG_MANAGED_NUM_SEED_CUSTOMERS[}],'${PG_MANAGED_NUM_SEED_CUSTOMERS}',' '{}' \;
+
+RUN echo "SELECT version();" >> /root/.psqlrc; \
+    echo "SET client_min_messages TO DEBUG1;" >> /root/.psqlrc; \
+    chmod 0400 /root/.psqlrc

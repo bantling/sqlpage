@@ -1,6 +1,7 @@
--- Seed addresses in a simple way that is not super accurate, but good enough and easy to understand
-SET log_min_messages = NOTICE;
+-- Display debug messages locally
+SET log_min_messages = DEBUG;
 
+-- Seed addresses in a simple way that is not super accurate, but good enough and easy to understand
 DO $$
 DECLARE
   -- Get the number of customers to generate
