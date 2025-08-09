@@ -289,7 +289,6 @@ BEGIN
   -- Initialize the result to an empty array
   P_RES := '[]';
 
-  <<MAIN_LOOP>>
   FOR V_CUST_ADDR IN SELECT * FROM managed_code.GET_JSONB_OBJ_ARR('P_CUST_ADDRS', P_CUST_ADDRS) LOOP
     -- Initialize result object
     V_UPSERT_RES := '{}';
@@ -361,7 +360,7 @@ BEGIN
           V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('addressError', V_ERR_TEXT);
 
           -- Early termination of this loop
-          CONTINUE MAIN_LOOP;
+          CONTINUE;
       END;
     END IF;
 
@@ -413,7 +412,7 @@ BEGIN
         V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('customerError', V_ERR_TEXT);
 
         -- Early termination
-        CONTINUE MAIN_LOOP;
+        CONTINUE;
     END;
 
     -- We can commit at this point, all subtransactions succeeded
