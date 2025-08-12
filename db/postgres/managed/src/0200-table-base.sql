@@ -47,7 +47,7 @@ CREATE INDEX IF NOT EXISTS base_ix_modified ON managed_tables.base (modified);
 -- - current timestamp is not an immutable function, so cannot be used for a generated column
 -- - this trigger must be separately applied to each child table
 -- - it is not applied to the base table, as that would not accomplish anything
-CREATE OR REPLACE FUNCTION BASE_TG_FN() RETURNS trigger AS
+CREATE OR REPLACE FUNCTION managed_tables.BASE_TG_FN() RETURNS trigger AS
 $$
 DECLARE
   V_CT TIMESTAMP := NOW() AT TIME ZONE 'UTC';
@@ -98,7 +98,8 @@ BEGIN
       NEW.modified = V_CT;
     ELSE NULL;
   END CASE;
-  
+
+--  RAISE DEBUG 'BASE_TG_FN: END';
   RETURN NEW;
 END;
 $$ LANGUAGE PLPGSQL;
@@ -129,13 +130,13 @@ BEGIN
         CREATE OR REPLACE TRIGGER testbase_tg_ins
         BEFORE INSERT ON testbase
         FOR EACH ROW
-        EXECUTE FUNCTION BASE_TG_FN();
+        EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
         CREATE OR REPLACE TRIGGER testbase_tg_upd
         BEFORE UPDATE ON testbase
         FOR EACH ROW
         WHEN (OLD IS DISTINCT FROM NEW)
-        EXECUTE FUNCTION BASE_TG_FN();
+        EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
         INSERT INTO testbase(
             relid

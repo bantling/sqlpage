@@ -10,13 +10,13 @@ CREATE TABLE IF NOT EXISTS managed_tables.address_type(
 CREATE OR REPLACE TRIGGER address_type_tg_ins
 BEFORE INSERT ON managed_tables.address_type
 FOR EACH ROW
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 CREATE OR REPLACE TRIGGER address_type_tg_upd
 BEFORE UPDATE ON managed_tables.address_type
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.address_type ADD CONSTRAINT address_type_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -38,6 +38,16 @@ SELECT 'ALTER TABLE managed_tables.address_type ADD CONSTRAINT address_type_uk_n
  )
 \gexec
 
+SELECT 'ALTER TABLE managed_tables.address_type ADD CONSTRAINT address_type_uk_ord UNIQUE(ord)'
+ WHERE NOT EXISTS (
+   SELECT NULL
+     FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA    = 'managed_tables'
+      AND TABLE_NAME      = 'address_type'
+      AND CONSTRAINT_NAME = 'address_type_uk_ord'
+ )
+\gexec
+
 -- ===================
 -- == address table ==
 -- ===================
@@ -53,16 +63,60 @@ CREATE TABLE IF NOT EXISTS managed_tables.address(
 ) INHERITS(managed_tables.base);
 
 -- Base trigger
-CREATE OR REPLACE TRIGGER address_tg_ins
+CREATE OR REPLACE TRIGGER address_tg_base_ins
 BEFORE INSERT ON managed_tables.address
 FOR EACH ROW
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
-CREATE OR REPLACE TRIGGER address_tg_upd
+CREATE OR REPLACE TRIGGER address_tg_base_upd
 BEFORE UPDATE ON managed_tables.address
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
+
+-- Address trigger function
+CREATE OR REPLACE FUNCTION managed_tables.ADDRESS_TG_FN() RETURNS trigger AS
+$$
+DECLARE
+  V_COUNTRY_NAME             TEXT;
+  V_COUNTRY_HAS_REGIONS      BOOLEAN;
+  V_COUNTRY_HAS_MAILING_CODE BOOLEAN;
+BEGIN
+  -- Does the new country require a region and/or mailing code?
+  SELECT name
+        ,has_regions
+        ,has_mailing_code
+    INTO V_COUNTRY_NAME
+        ,V_COUNTRY_HAS_REGIONS
+        ,V_COUNTRY_HAS_MAILING_CODE
+    FROM managed_tables.country c
+   WHERE c.relid = NEW.country_relid;
+
+  -- A region must be provided if the country requires it
+  IF V_COUNTRY_HAS_REGIONS AND (NEW.region_relid IS NULL) THEN
+    RAISE EXCEPTION 'The country % requires a region', V_COUNTRY_NAME;
+  END IF;
+
+  -- A mailing code must be provided if the country requires it
+  IF V_COUNTRY_HAS_MAILING_CODE AND (NEW.mailing_code IS NULL) THEN
+    RAISE EXCEPTION 'The country % requires a mailing code', V_COUNTRY_NAME;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE PLPGSQL;
+
+-- Address trigger
+CREATE OR REPLACE TRIGGER address_tg_fn_ins
+BEFORE INSERT ON managed_tables.address
+FOR EACH ROW
+EXECUTE FUNCTION managed_tables.ADDRESS_TG_FN();
+
+CREATE OR REPLACE TRIGGER address_tg_fn_upd
+BEFORE UPDATE ON managed_tables.address
+FOR EACH ROW
+WHEN (OLD IS DISTINCT FROM NEW)
+EXECUTE FUNCTION managed_tables.ADDRESS_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.address ADD CONSTRAINT address_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -118,13 +172,13 @@ CREATE TABLE IF NOT EXISTS managed_tables.customer_person(
 CREATE OR REPLACE TRIGGER customer_person_tg_ins
 BEFORE INSERT ON managed_tables.customer_person
 FOR EACH ROW
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 CREATE OR REPLACE TRIGGER customer_person_tg_upd
 BEFORE UPDATE ON managed_tables.customer_person
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_person_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -147,7 +201,7 @@ SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_perso
 \gexec
 
 -- Trigger function to ensure that customer_person_address rows do NOT have an address type
-CREATE OR REPLACE FUNCTION CUSTOMER_PERSON_ADDRESS_TG_FN() RETURNS trigger AS
+CREATE OR REPLACE FUNCTION managed_tables.CUSTOMER_PERSON_ADDRESS_TG_FN() RETURNS trigger AS
 $$
 BEGIN
   IF (SELECT address_type_relid IS NOT NULL FROM managed_tables.address WHERE relid = NEW.address_relid) THEN
@@ -163,7 +217,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE TRIGGER customer_person_address_tg
 BEFORE INSERT OR UPDATE ON managed_tables.customer_person
 FOR EACH ROW
-EXECUTE FUNCTION CUSTOMER_PERSON_ADDRESS_TG_FN();
+EXECUTE FUNCTION managed_tables.CUSTOMER_PERSON_ADDRESS_TG_FN();
 
 -- ==========================
 -- == business customer table
@@ -176,13 +230,13 @@ CREATE TABLE IF NOT EXISTS managed_tables.customer_business(
 CREATE OR REPLACE TRIGGER customer_business_tg_ins
 BEFORE INSERT ON managed_tables.customer_business
 FOR EACH ROW
-EXECUTE FUNCTION base_tg_fn();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 CREATE OR REPLACE TRIGGER customer_business_tg_upd
 BEFORE UPDATE ON managed_tables.customer_business
 FOR EACH ROW
 WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION BASE_TG_FN();
+EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.customer_business ADD CONSTRAINT customer_business_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -235,7 +289,7 @@ SELECT 'ALTER TABLE managed_tables.customer_business_address_jt ADD CONSTRAINT c
 -- Trigger function to ensure that:
 -- 1. An address joined to a business has an address type
 -- 2. There does not already exist another address joined to the same business with the same address type
-CREATE OR REPLACE FUNCTION CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN() RETURNS trigger AS
+CREATE OR REPLACE FUNCTION managed_tables.CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN() RETURNS trigger AS
 $$
 DECLARE
     V_ADDRESS_TYPE_RELID BIGINT;
@@ -274,4 +328,4 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE TRIGGER customer_business_address_jt_tg
 BEFORE INSERT OR UPDATE ON managed_tables.customer_business_address_jt
 FOR EACH ROW
-EXECUTE FUNCTION CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN();
+EXECUTE FUNCTION managed_tables.CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN();

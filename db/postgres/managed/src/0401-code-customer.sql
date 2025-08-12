@@ -384,9 +384,9 @@ BEGIN
        ,TO_TSVECTOR('english', V_CUST_ADDR #>> '{terms}')
        ,V_CUST_ADDR #>  '{extra}'
        ,V_ADDR_RELID
-       ,V_CUST_ADDR #>> '{first_name}'
-       ,V_CUST_ADDR #>> '{middle_name}'
-       ,V_CUST_ADDR #>> '{last_name}'
+       ,V_CUST_ADDR #>> '{firstName}'
+       ,V_CUST_ADDR #>> '{middleName}'
+       ,V_CUST_ADDR #>> '{lastName}'
       )
       ON CONFLICT (relid) DO
       UPDATE SET
@@ -394,9 +394,9 @@ BEGIN
        ,terms         = TO_TSVECTOR('english', V_CUST_ADDR #>> '{terms}')
        ,extra         = V_CUST_ADDR #>  '{extra}'
        ,address_relid = V_ADDR_RELID
-       ,first_name    = V_CUST_ADDR #>> '{first_name}'
-       ,middle_name   = V_CUST_ADDR #>> '{middle_name}'
-       ,last_name     = V_CUST_ADDR #>> '{last_name}';
+       ,first_name    = V_CUST_ADDR #>> '{firstName}'
+       ,middle_name   = V_CUST_ADDR #>> '{middleName}'
+       ,last_name     = V_CUST_ADDR #>> '{lastName}';
 
         IF V_PERSON_RELID IS NULL THEN
           V_PERSON_RELID := LASTVAL();
@@ -424,7 +424,7 @@ BEGIN
     P_RES := JSONB_INSERT(P_RES, '{-1}', V_UPSERT_RES);
   END LOOP;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 /*
 DO $$
@@ -432,18 +432,26 @@ DECLARE
   P_RES JSONB;
 BEGIN
   CALL UPSERT_CUSTOMER_PERSONS(
-    JSONB_BUILD_OBJECT(
-      'description', 'Avery Sienna Jones'
-     ,'first_name' , 'Avery'
-     ,'middle_name', 'Sienna'
-     ,'last_name',   'Jones'
-     ,'address', JSONB_BUILD_OBJECT(
-         'description' , '123 Sesame St, Calgary, AB, Canada T1T 1T1'
-        ,'country'     , 'CA'
-        ,'region'      , 'AB'
-        ,'city'        , 'Calgary'
-        ,'address'     , '123 Sesame St'
-        ,'mailing_code', 'T1T 1T1'
+    JSONB_BUILD_ARRAY(
+      JSONB_BUILD_OBJECT (
+        'description', 'Avery Sienna Jones'
+       ,'firstName' , 'Avery'
+       ,'middleName', 'Sienna'
+       ,'lastName'  , 'Jones'
+       ,'address', JSONB_BUILD_OBJECT(
+           'description' , '123 Sesame St, Calgary, AB, Canada T1T 1T1'
+          ,'country'     , 'CA'
+          ,'region'      , 'AB'
+          ,'city'        , 'Calgary'
+          ,'address'     , '123 Sesame St'
+          ,'mailingCode', 'T1T 1T1'
+        )
+      )
+     ,JSONB_BUILD_OBJECT (
+        'description', 'James Jack Marley'
+       ,'firstName' , 'James'
+       ,'middleName', 'Jack'
+       ,'lastName'  , 'Marley'
       )
     )
    ,P_RES
