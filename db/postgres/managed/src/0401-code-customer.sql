@@ -268,163 +268,229 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 --
 -- If P_CUST_ADDRS is null or an empty array, then P_RES is an empty array.
 -- If P_CUST_ADDRS is a single object, then P_RES is an array of one object.
-CREATE OR REPLACE PROCEDURE UPSERT_CUSTOMER_PERSONS(
-  P_CUST_ADDRS     JSONB
- ,P_RES        OUT JSONB
-) AS
-$$
-DECLARE
-  V_CUST_ADDR     JSONB;
-
-  V_ADDR          JSONB;
-  V_ADDR_RELID    BIGINT;
-  V_COUNTRY_RELID BIGINT;
-  V_REGION_RELID  BIGINT;
-
-  V_PERSON_RELID  BIGINT;
-
-  V_ERR_TEXT      TEXT;
-  V_UPSERT_RES    JSONB;
-BEGIN
-  -- Initialize the result to an empty array
-  P_RES := '[]';
-
-  FOR V_CUST_ADDR IN SELECT * FROM managed_code.GET_JSONB_OBJ_ARR('P_CUST_ADDRS', P_CUST_ADDRS) LOOP
-    -- Initialize result object
-    V_UPSERT_RES := '{}';
-
-    -- Grab optional address
-    V_ADDR := V_CUST_ADDR #> '{address}';
-
-    -- Check if the customer has an address
-    IF V_ADDR IS NOT NULL THEN
-      -- Get address relid, if it exists
-      V_ADDR_RELID := managed_code.ID_TO_RELID(V_ADDR #>> '{id}');
-
-      -- Get country relid
-      SELECT relid INTO V_COUNTRY_RELID
-        FROM managed_tables.country
-       WHERE V_ADDR #>> '{country}' IN (code_2, code_3);
-
-      -- Get region relid
-      SELECT relid INTO V_REGION_RELID
-        FROM managed_tables.region
-       WHERE country_relid = V_COUNTRY_RELID
-         AND V_ADDR #>> '{region}' = code;
-
-      BEGIN
-        INSERT INTO managed_tables.address(
-          relid
-         ,description
-         ,terms
-         ,extra
-         ,country_relid
-         ,region_relid
-         ,city
-         ,address
-         ,mailing_code
-        ) VALUES (
-          V_ADDR_RELID
-         ,V_ADDR #>> '{description}'
-         ,TO_TSVECTOR('english', V_ADDR #>> '{terms}')
-         ,V_ADDR #>  '{extra}'
-         ,V_COUNTRY_RELID
-         ,V_REGION_RELID
-         ,V_ADDR #>> '{city}'
-         ,V_ADDR #>> '{address}'
-         ,V_ADDR #>> '{mailingCode}'
-        )
-        ON CONFLICT (relid) DO
-        UPDATE SET
-          description   = V_ADDR #>> '{description}'
-         ,terms         = TO_TSVECTOR('english', V_ADDR #>> '{terms}')
-         ,extra         = V_ADDR #>  '{extra}'
-         ,country_relid = V_COUNTRY_RELID
-         ,region_relid  = V_REGION_RELID
-         ,city          = V_ADDR #>> '{city}'
-         ,address       = V_ADDR #>> '{address}'
-         ,mailing_code  = V_ADDR #>> '{mailingCode}';
-
-        IF V_ADDR_RELID IS NULL THEN
-          V_ADDR_RELID := LASTVAL();
-        END IF;
-
-        V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('addressId', managed_code.RELID_TO_ID(V_ADDR_RELID));
-
-      EXCEPTION
-        WHEN OTHERS THEN
-          GET STACKED DIAGNOSTICS V_ERR_TEXT = MESSAGE_TEXT;
---          RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: ROLLING BACK ADDR: %, %', V_ADDR_RELID, V_ERR_TEXT;
-          ROLLBACK;
---          RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: ROLLED  BACK ADDR';
-          V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('addressError', V_ERR_TEXT);
-
-          -- Early termination of this loop
-          CONTINUE;
-      END;
-    END IF;
-
-    -- Get person relid, if it exists
-    V_PERSON_RELID := managed_code.ID_TO_RELID(V_CUST_ADDR #>> '{id}');
-
-    -- Person subtransaction
-    BEGIN
-      INSERT INTO managed_tables.customer_person(
-        relid
-       ,description
-       ,terms
-       ,extra
-       ,address_relid
-       ,first_name
-       ,middle_name
-       ,last_name
-      ) VALUES (
-        V_PERSON_RELID
-       ,V_CUST_ADDR #>> '{description}'
-       ,TO_TSVECTOR('english', V_CUST_ADDR #>> '{terms}')
-       ,V_CUST_ADDR #>  '{extra}'
-       ,V_ADDR_RELID
-       ,V_CUST_ADDR #>> '{firstName}'
-       ,V_CUST_ADDR #>> '{middleName}'
-       ,V_CUST_ADDR #>> '{lastName}'
-      )
-      ON CONFLICT (relid) DO
-      UPDATE SET
-        description   = V_CUST_ADDR #>> '{description}'
-       ,terms         = TO_TSVECTOR('english', V_CUST_ADDR #>> '{terms}')
-       ,extra         = V_CUST_ADDR #>  '{extra}'
-       ,address_relid = V_ADDR_RELID
-       ,first_name    = V_CUST_ADDR #>> '{firstName}'
-       ,middle_name   = V_CUST_ADDR #>> '{middleName}'
-       ,last_name     = V_CUST_ADDR #>> '{lastName}';
-
-        IF V_PERSON_RELID IS NULL THEN
-          V_PERSON_RELID := LASTVAL();
-        END IF;
-
-        P_RES := P_RES || JSONB_BUILD_OBJECT('customerId', managed_code.RELID_TO_ID(V_PERSON_RELID));
-    EXCEPTION
-      WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS V_ERR_TEXT = MESSAGE_TEXT;
+--CREATE OR REPLACE PROCEDURE UPSERT_CUSTOMER_PERSONS(
+--  P_CUST_ADDRS     JSONB
+-- ,P_RES        OUT JSONB
+--) AS
+--$$
+--DECLARE
+--  V_CUST_ADDR     JSONB;
+--
+--  V_ADDR          JSONB;
+--  V_ADDR_RELID    BIGINT;
+--  V_COUNTRY_RELID BIGINT;
+--  V_REGION_RELID  BIGINT;
+--  V_ADDR_DESC     TEXT;
+--
+--  V_PERSON_RELID  BIGINT;
+--
+--  V_ERR_TEXT      TEXT;
+--  V_UPSERT_RES    JSONB;
+--BEGIN
+--  -- Initialize the result to an empty array
+--  P_RES := '[]';
+--
+--  FOR V_CUST_ADDR IN SELECT * FROM managed_code.GET_JSONB_OBJ_ARR('P_CUST_ADDRS', P_CUST_ADDRS) LOOP
+--    -- Subtransaction for address and customer
+--    -- Initialize result object
+--    V_UPSERT_RES := '{}';
+--
+--    -- Get person relid, if it exists
+--    V_PERSON_RELID := managed_code.ID_TO_RELID(V_CUST_ADDR #>> '{id}');
+--
+--    -- Grab optional address
+--    V_ADDR := V_CUST_ADDR #> '{address}';
+--
+--    -- Get address relid, if it exists
+--    V_ADDR_RELID := managed_code.ID_TO_RELID(V_ADDR #>> '{id}');
+--
+--    -- Get country relid
+--    SELECT relid INTO V_COUNTRY_RELID
+--      FROM managed_tables.country
+--     WHERE V_ADDR #>> '{country}' IN (code_2, code_3);
+--
+--    -- Get region relid
+--    SELECT relid INTO V_REGION_RELID
+--      FROM managed_tables.region
+--     WHERE country_relid = V_COUNTRY_RELID
+--       AND V_ADDR #>> '{region}' = code;
+--
+--    BEGIN
+--      -- Check if the customer has an address
+--      IF V_ADDR IS NOT NULL THEN
+--        INSERT INTO managed_tables.address(
+--          relid
+--         ,description
+--         ,terms
+--         ,extra
+--         ,country_relid
+--         ,region_relid
+--         ,city
+--         ,address
+--         ,mailing_code
+--        ) VALUES (
+--          V_ADDR_RELID
+--         ,V_ADDR #>> '{description}'
+--         ,TO_TSVECTOR('english', V_ADDR #>> '{terms}')
+--         ,V_ADDR #>  '{extra}'
+--         ,V_COUNTRY_RELID
+--         ,V_REGION_RELID
+--         ,V_ADDR #>> '{city}'
+--         ,V_ADDR #>> '{address}'
+--         ,V_ADDR #>> '{mailingCode}'
+--        )
+--        ON CONFLICT (relid) DO
+--        UPDATE SET
+--          description   = V_ADDR #>> '{description}'
+--         ,terms         = TO_TSVECTOR('english', V_ADDR #>> '{terms}')
+--         ,extra         = V_ADDR #>  '{extra}'
+--         ,country_relid = V_COUNTRY_RELID
+--         ,region_relid  = V_REGION_RELID
+--         ,city          = V_ADDR #>> '{city}'
+--         ,address       = V_ADDR #>> '{address}'
+--         ,mailing_code  = V_ADDR #>> '{mailingCode}';
+--
+--        IF V_ADDR_RELID IS NULL THEN
+--          V_ADDR_RELID := LASTVAL();
+--        END IF;
+--
+--        V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('addressId', managed_code.RELID_TO_ID(V_ADDR_RELID));
+--      END IF;
+--
+--      -- Person
+--      INSERT INTO managed_tables.customer_person(
+--        relid
+--       ,description
+--       ,terms
+--       ,extra
+--       ,address_relid
+--       ,first_name
+--       ,middle_name
+--       ,last_name
+--      ) VALUES (
+--        V_PERSON_RELID
+--       ,V_CUST_ADDR #>> '{description}'
+--       ,TO_TSVECTOR('english', V_CUST_ADDR #>> '{terms}')
+--       ,V_CUST_ADDR #>  '{extra}'
+--       ,V_ADDR_RELID
+--       ,V_CUST_ADDR #>> '{firstName}'
+--       ,V_CUST_ADDR #>> '{middleName}'
+--       ,V_CUST_ADDR #>> '{lastName}'
+--      )
+--      ON CONFLICT (relid) DO
+--      UPDATE SET
+--        description   = V_CUST_ADDR #>> '{description}'
+--       ,terms         = TO_TSVECTOR('english', V_CUST_ADDR #>> '{terms}')
+--       ,extra         = V_CUST_ADDR #>  '{extra}'
+--       ,address_relid = V_ADDR_RELID
+--       ,first_name    = V_CUST_ADDR #>> '{firstName}'
+--       ,middle_name   = V_CUST_ADDR #>> '{middleName}'
+--       ,last_name     = V_CUST_ADDR #>> '{lastName}';
+--
+--      IF V_PERSON_RELID IS NULL THEN
+--        V_PERSON_RELID := LASTVAL();
+--      END IF;
+--
+--      V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('id', managed_code.RELID_TO_ID(V_ADDR_RELID));
+--      RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: COMMITTING PERSON: %', V_ADDR_RELID;
+--      COMMIT;
+--      RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: COMMITTED  PERSON: %', V_ADDR_RELID;
+--    EXCEPTION
+--      WHEN OTHERS THEN
+--        GET STACKED DIAGNOSTICS V_ERR_TEXT = MESSAGE_TEXT;
 --        RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: ROLLING BACK PERSON: %, %', V_PERSON_RELID, V_ERR_TEXT;
-        ROLLBACK;
---        RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: ROLLED  BACK PERSON';
-        V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('customerError', V_ERR_TEXT);
+--        ROLLBACK;
+--        RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: ROLLED  BACK PERSON: %'   , V_PERSON_RELID;
+--        V_UPSERT_RES := V_UPSERT_RES || JSONB_BUILD_OBJECT('error', V_ERR_TEXT);
+--    END;
+--
+--    -- All subtransactions succeeded
+--    P_RES := JSONB_INSERT(P_RES, '{-1}', V_UPSERT_RES);
+--  END LOOP;
+--END;
+--$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-        -- Early termination
-        CONTINUE;
-    END;
-
-    -- We can commit at this point, all subtransactions succeeded
---    RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: COMMITTING PERSON %, ADDRESS %', V_ADDR_RELID, V_PERSON_RELID;
-    COMMIT;
---    RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: COMMITTED  PERSON, ADDRESS';
-
---    RAISE DEBUG 'UPSERT_CUSTOMER_PERSON_PROC: V_UPSERT_RES = %', V_UPSERT_RES;
-    P_RES := JSONB_INSERT(P_RES, '{-1}', V_UPSERT_RES);
-  END LOOP;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+--CREATE OR REPLACE FUNCTION UPSERT_CUSTOMER_PERSONS(P_CUST_ADDRS JSONB) RETURNS JSONB AS
+--$$
+--BEGIN
+--  WITH
+--  DATA AS (
+--    SELECT JSONB_BUILD_ARRAY(
+--             JSONB_BUILD_OBJECT(
+--                 'description', 'Avery Sienna Jones'
+--                ,'firstName'  , 'Avery'
+--                ,'middleName' , 'Sienna'
+--                ,'lastName'   , 'Jones'
+--                ,'address'    , JSONB_BUILD_OBJECT(
+--                                  'country', 'CA'
+--                                 ,'region' , 'AB'
+--                                 ,'city'   , 'Calgary'
+--                                 ,'address', '123 Sesame St'
+--                                )
+--             )
+--            ,JSONB_BUILD_OBJECT(
+--                 'description', 'Bob John James'
+--                ,'firstName'  , 'Bob'
+--                ,'middleName' , 'John'
+--                ,'lastName'   , 'James'
+--             )
+--           ) AS P_CUST_ADDRS
+--  ),
+----  SELECT * FROM DATA;
+----  WITH
+--  CUST_ADDR_REC AS (
+--    SELECT managed_code.ID_TO_RELID(CUST_ADDR #>> '{id}')  AS ID
+--          ,CUST_ADDR #>> '{version}'                       AS VERSION
+--          ,CUST_ADDR #>> '{description}'                   AS DESCRIPTION
+--          ,TO_TSVECTOR('english', CUST_ADDR #>> '{terms}') AS TERMS
+--          ,CUST_ADDR #>  '{extra}'                         AS EXTRA
+--          ,TO_TIMESTAMP(CUST_ADDR #>> '{created}')         AS CREATED
+--          ,TO_TIMESTAMP(CUST_ADDR #>> '{modified}')        AS MODIFIED
+--          ,CUST_ADDR #>> '{firstName}'                     AS FIRST_NAME
+--          ,CUST_ADDR #>> '{middleName}'                    AS MIDDLE_NAME
+--          ,CUST_ADDR #>> '{lastName}'                      AS LAST_NAME
+--          ,CUST_ADDR #>  '{address}'                       AS ADDRESS
+--      FROM (
+--        SELECT JSONB_ARRAY_ELEMENTS(P_CUST_ADDRS) AS CUST_ADDR
+--          FROM DATA
+--      ) t
+--  )
+--  SELECT * FROM CUST_ADDR_REC;
+-- ,VALIDATE_CUSTOMER AS (
+--    -- First name is non-null non-empty
+--    SELECT managed_code.IIF()
+--      FROM CUST_ADDR_REC
+--
+--  -- Must have a country
+-- ,COUNTRY_RELIDS AS (
+--    SELECT *
+--          ,c.relid AS country_relid
+--          ,c.has_regions
+--          ,c.has_mailing_code
+--      FROM CUST_ADDRS
+--          ,managed_tables.country c
+--     WHERE D_CUST_ADDR #>> '{country}' IN (c.code_2, c.code_3)
+-- )
+--  -- May have a region
+-- ,REGION_RELIDS AS (
+--    SELECT *
+--          ,r.relid AS region_relid
+--      FROM COUNTRY_RELIDS c
+--      LEFT
+--      JOIN managed_tables.region r
+--        ON r.country_relid = c.country_relid
+--       AND D_CUST_ADDR #>> '{region}' = r.code
+-- )
+-- ,ADDR AS (
+--    SELECT ADDR #>> '{description}'                   AS description
+--          ,TO_TSVECTOR('english', ADDR #>> '{terms}') AS terms
+--          ,ADDR #>  '{extra'}                         AS extra
+--          ,ADDR #>> '{extra'}                         AS extra
+--      FROM D_CUST_ADDR #> '{address}' ADDR
+-- )
+-- SELECT NULL;
+--END;
+--$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 /*
 DO $$
@@ -446,8 +512,8 @@ BEGIN
           ,'address'     , '123 Sesame St'
           ,'mailingCode', 'T1T 1T1'
         )
-      )
-     ,JSONB_BUILD_OBJECT (
+      ),
+      JSONB_BUILD_OBJECT (
         'description', 'James Jack Marley'
        ,'firstName' , 'James'
        ,'middleName', 'Jack'
@@ -457,7 +523,7 @@ BEGIN
    ,P_RES
   );
 
---  RAISE DEBUG 'P_RES = %', P_RES;
+  RAISE DEBUG 'P_RES = %', P_RES;
 END;
 $$ LANGUAGE plpgsql;
 

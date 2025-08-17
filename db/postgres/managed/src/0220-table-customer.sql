@@ -92,9 +92,24 @@ BEGIN
     FROM managed_tables.country c
    WHERE c.relid = NEW.country_relid;
 
-  -- A region must be provided if the country requires it
-  IF V_COUNTRY_HAS_REGIONS AND (NEW.region_relid IS NULL) THEN
-    RAISE EXCEPTION 'The country % requires a region', V_COUNTRY_NAME;
+  IF V_COUNTRY_HAS_REGIONS THEN
+    -- A region must be provided if the country requires it
+    IF NEW.region_relid IS NULL THEN
+      RAISE EXCEPTION 'The country % requires a region', V_COUNTRY_NAME;
+    -- The region must be part of the country
+    ELSIF (
+      (SELECT COUNT(*)
+        FROM managed_tables.region r
+       WHERE r.country_relid = NEW.country_relid
+         AND r.relid         = NEW.region_relid
+      ) = 0
+    ) THEN
+      RAISE EXCEPTION
+         'The country % does not contain the region %'
+        ,V_COUNTRY_NAME
+        ,(SELECT name FROM managed_tables.region WHERE relid = NEW.region_relid)
+      ;
+    END IF;
   END IF;
 
   -- A mailing code must be provided if the country requires it
@@ -200,24 +215,24 @@ SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_perso
  )
 \gexec
 
--- Trigger function to ensure that customer_person_address rows do NOT have an address type
-CREATE OR REPLACE FUNCTION managed_tables.CUSTOMER_PERSON_ADDRESS_TG_FN() RETURNS trigger AS
-$$
-BEGIN
-  IF (SELECT address_type_relid IS NOT NULL FROM managed_tables.address WHERE relid = NEW.address_relid) THEN
-    -- The related address has an address type
-    RAISE EXCEPTION 'A customer person address cannot have an address type';
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE PLPGSQL;
-
--- Person address trigger
-CREATE OR REPLACE TRIGGER customer_person_address_tg
-BEFORE INSERT OR UPDATE ON managed_tables.customer_person
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.CUSTOMER_PERSON_ADDRESS_TG_FN();
+---- Trigger function to ensure that customer_person_address rows do NOT have an address type
+--CREATE OR REPLACE FUNCTION managed_tables.CUSTOMER_PERSON_ADDRESS_TG_FN() RETURNS trigger AS
+--$$
+--BEGIN
+--  IF (SELECT address_type_relid IS NOT NULL FROM managed_tables.address WHERE relid = NEW.address_relid) THEN
+--    -- The related address has an address type
+--    RAISE EXCEPTION 'A customer person address cannot have an address type';
+--  END IF;
+--
+--  RETURN NEW;
+--END;
+--$$ LANGUAGE PLPGSQL;
+--
+---- Person address trigger
+--CREATE OR REPLACE TRIGGER customer_person_address_tg
+--BEFORE INSERT OR UPDATE ON managed_tables.customer_person
+--FOR EACH ROW
+--EXECUTE FUNCTION managed_tables.CUSTOMER_PERSON_ADDRESS_TG_FN();
 
 -- ==========================
 -- == business customer table

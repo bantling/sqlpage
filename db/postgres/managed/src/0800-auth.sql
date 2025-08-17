@@ -15,4 +15,3 @@
 
 GRANT USAGE ON SCHEMA managed_code TO managed_app_exec;
 GRANT EXECUTE ON ALL ROUTINES IN SCHEMA managed_code TO managed_app_exec;
-ALTER DATABASE pg_managed SET SEARCH_PATH TO managed_code, public, pg_temp;

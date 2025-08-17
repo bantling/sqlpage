@@ -590,19 +590,52 @@ SELECT managed_Code.TEST(
 -- YYYY-MM-DDTHH:MM:SS.sssZ
 -- 123456789012345678901234
 -- This is a 24 char string
+--
+-- The conversion uses rounding, not truncation: 253786 microseconds gets rounded up to 254 milliseconds
+-- The conversion always provides 3 digits for milliseconds (eg, 210 milliseconds shows as .210, not .21)
 CREATE OR REPLACE FUNCTION managed_code.TO_8601(P_TS TIMESTAMP = NULL) RETURNS VARCHAR(24) AS
 $$
-  SELECT TO_CHAR(COALESCE(P_TS, NOW() AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+  SELECT TO_CHAR(COALESCE(P_TS, NOW() AT TIME ZONE 'UTC')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"')
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+
 
 -- Test TO_8601
 SELECT managed_code.TEST(msg, managed_code.IIF(ARRAY_LENGTH(ARG, 1) = 0, managed_code.TO_8601(), managed_code.TO_8601(ARG[1])) = res)
   FROM (VALUES
-          ('TO_8601() must return NOW'                   , ARRAY[]::TIMESTAMP[]                              , TO_CHAR(NOW() AT TIME ZONE 'UTC'                   , 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-         ,('TO_8601(NULL) must return NOW'               , ARRAY[NULL]::TIMESTAMP[]                          , TO_CHAR(NOW() AT TIME ZONE 'UTC'                   , 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-         ,('TO_8601(NOW - 1 DAY) must return NOW - 1 DAY', ARRAY[NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'], TO_CHAR(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+          ('TO_8601() must return NOW'                             , ARRAY[]::TIMESTAMP[]                              , TO_CHAR((NOW() AT TIME ZONE 'UTC')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"'))
+         ,('TO_8601(NULL) must return NOW'                         , ARRAY[NULL]::TIMESTAMP[]                          , TO_CHAR((NOW() AT TIME ZONE 'UTC')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"'))
+         ,('TO_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , ARRAY[NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'], TO_CHAR((NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"'))
+         ,('TO_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', ARRAY['2025-08-16T02:30:45.234567Z'::TIMESTAMP]   , '2025-08-16T02:30:45.235Z')
+         ,('TO_8601(2025-08-16T02:30:45.9Z) HAS 900MS'             , ARRAY['2025-08-16T02:30:45.9Z'::TIMESTAMP]        , '2025-08-16T02:30:45.900Z')
        ) AS t(msg, arg, res);
----------------------------------------------------------------------------------------------------- 
+----------------------------------------------------------------------------------------------------
+
+
+
+
+---------------------------------------------------------------------------------------------------
+-- FROM_8601 converts an ISO 8601 string of the following form into a TIMESTAMP
+-- YYYY-MM-DDTHH:MM:SS.sssZ
+-- 123456789012345678901234
+-- This is a 24 char string
+CREATE OR REPLACE FUNCTION managed_code.FROM_8601(P_TS VARCHAR(24) = NULL) RETURNS TIMESTAMP AS
+$$
+  SELECT CASE
+         WHEN P_TS IS NULL THEN (NOW() AT TIME ZONE 'UTC')::TIMESTAMP(3)
+         ELSE TO_TIMESTAMP(P_TS, 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"')
+         END;
+$$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+
+-- Test FROM_8601
+SELECT managed_code.TEST(msg, managed_code.IIF(ARRAY_LENGTH(ARG, 1) = 0, managed_code.FROM_8601(), managed_code.FROM_8601(ARG[1])) = res)
+  FROM (VALUES
+          ('FROM_8601() must return NOW'                           , ARRAY[]::VARCHAR[]                                                      , NOW()::TIMESTAMP(3))
+         ,('FROM_8601(NULL) must return NOW'                       , ARRAY[NULL]::VARCHAR[]                                                  , NOW()::TIMESTAMP(3))
+         ,('FROM_8601(NOW - 1 DAY) must return NOW - 1 DAY'        , ARRAY[managed_code.TO_8601(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY')], NOW()::TIMESTAMP(3) - INTERVAL '1 DAY')
+         ,('TO_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', ARRAY['2025-08-16T02:30:45.234567Z']                                    , managed_code.FROM_8601('2025-08-16T02:30:45.235Z'))
+         ,('TO_8601(2025-08-16T02:30:45.9Z) has 900MS'             , ARRAY['2025-08-16T02:30:45.9Z']                                         , managed_code.FROM_8601('2025-08-16T02:30:45.900Z'))
+       ) AS t(msg, arg, res);
+----------------------------------------------------------------------------------------------------
 
 
 
@@ -771,7 +804,7 @@ $$
 BEGIN
   RAISE EXCEPTION '%', P_MSG;
 END;
-$$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+$$ LANGUAGE PLPGSQL IMMUTABLE;
 
 -- Test RAISE_MSG
 SELECT managed_code.TEST('the msg', 'SELECT managed_code.RAISE_MSG(''the msg'')');
