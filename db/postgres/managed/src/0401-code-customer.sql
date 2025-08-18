@@ -413,53 +413,57 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 --CREATE OR REPLACE FUNCTION UPSERT_CUSTOMER_PERSONS(P_CUST_ADDRS JSONB) RETURNS JSONB AS
 --$$
 --BEGIN
+  WITH
+  DATA AS (
+    SELECT JSONB_BUILD_ARRAY(
+             JSONB_BUILD_OBJECT(
+                 'description', 'Avery Sienna Jones'
+                ,'firstName'  , 'Avery'
+                ,'middleName' , 'Sienna'
+                ,'lastName'   , 'Jones'
+                ,'address'    , JSONB_BUILD_OBJECT(
+                                  'country', 'CA'
+                                 ,'region' , 'AB'
+                                 ,'city'   , 'Calgary'
+                                 ,'address', '123 Sesame St'
+                                )
+             )
+            ,JSONB_BUILD_OBJECT(
+                 'description', 'Bob John James'
+                ,'firstName'  , 'Bob'
+                ,'middleName' , 'John'
+                ,'lastName'   , 'James'
+             )
+           ) AS P_CUST_ADDRS
+  ),
+--  SELECT * FROM DATA;
 --  WITH
---  DATA AS (
---    SELECT JSONB_BUILD_ARRAY(
---             JSONB_BUILD_OBJECT(
---                 'description', 'Avery Sienna Jones'
---                ,'firstName'  , 'Avery'
---                ,'middleName' , 'Sienna'
---                ,'lastName'   , 'Jones'
---                ,'address'    , JSONB_BUILD_OBJECT(
---                                  'country', 'CA'
---                                 ,'region' , 'AB'
---                                 ,'city'   , 'Calgary'
---                                 ,'address', '123 Sesame St'
---                                )
---             )
---            ,JSONB_BUILD_OBJECT(
---                 'description', 'Bob John James'
---                ,'firstName'  , 'Bob'
---                ,'middleName' , 'John'
---                ,'lastName'   , 'James'
---             )
---           ) AS P_CUST_ADDRS
---  ),
-----  SELECT * FROM DATA;
-----  WITH
---  CUST_ADDR_REC AS (
---    SELECT managed_code.ID_TO_RELID(CUST_ADDR #>> '{id}')  AS ID
---          ,CUST_ADDR #>> '{version}'                       AS VERSION
---          ,CUST_ADDR #>> '{description}'                   AS DESCRIPTION
---          ,TO_TSVECTOR('english', CUST_ADDR #>> '{terms}') AS TERMS
---          ,CUST_ADDR #>  '{extra}'                         AS EXTRA
---          ,TO_TIMESTAMP(CUST_ADDR #>> '{created}')         AS CREATED
---          ,TO_TIMESTAMP(CUST_ADDR #>> '{modified}')        AS MODIFIED
---          ,CUST_ADDR #>> '{firstName}'                     AS FIRST_NAME
---          ,CUST_ADDR #>> '{middleName}'                    AS MIDDLE_NAME
---          ,CUST_ADDR #>> '{lastName}'                      AS LAST_NAME
---          ,CUST_ADDR #>  '{address}'                       AS ADDRESS
---      FROM (
---        SELECT JSONB_ARRAY_ELEMENTS(P_CUST_ADDRS) AS CUST_ADDR
---          FROM DATA
---      ) t
---  )
+  CUST_ADDR_REC AS (
+    SELECT managed_code.ID_TO_RELID(CUST_ADDR #>> '{id}')     AS ID
+          ,CUST_ADDR #>> '{version}'                          AS VERSION
+          ,CUST_ADDR #>> '{description}'                      AS DESCRIPTION
+          ,TO_TSVECTOR('english', CUST_ADDR #>> '{terms}')    AS TERMS
+          ,CUST_ADDR #>  '{extra}'                            AS EXTRA
+          ,managed_code.FROM_8601(CUST_ADDR #>> '{created}')  AS CREATED
+          ,managed_code.FROM_8601(CUST_ADDR #>> '{modified}') AS MODIFIED
+          ,CUST_ADDR #>> '{firstName}'                        AS FIRST_NAME
+          ,CUST_ADDR #>> '{middleName}'                       AS MIDDLE_NAME
+          ,CUST_ADDR #>> '{lastName}'                         AS LAST_NAME
+          ,CUST_ADDR #>  '{address}'                          AS ADDRESS
+          ,ROW_NUMBER() OVER() - 1                              AS ROW_IDX
+      FROM (
+        SELECT JSONB_ARRAY_ELEMENTS(P_CUST_ADDRS) AS CUST_ADDR
+          FROM DATA
+      ) t
+  )
 --  SELECT * FROM CUST_ADDR_REC;
--- ,VALIDATE_CUSTOMER AS (
---    -- First name is non-null non-empty
---    SELECT managed_code.IIF()
---      FROM CUST_ADDR_REC
+ ,VALIDATE_CUSTOMER AS (
+    -- First name is non-null non-empty
+    -- need a separate raise function for dying if null or empty string
+    SELECT managed_code.IIF(LENGTH(COALESCE(first_name, '')) = 0, managed_code.RAISE_MSG(format('%s: customer firstName is required', ROW_IDX))::TEXT, first_name)
+      FROM CUST_ADDR_REC
+  )
+ SELECT * FROM VALIDATE_CUSTOMER;
 --
 --  -- Must have a country
 -- ,COUNTRY_RELIDS AS (
