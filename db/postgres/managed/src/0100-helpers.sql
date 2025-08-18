@@ -794,17 +794,56 @@ SELECT DISTINCT * FROM (
 
 
 ---------------------------------------------------------------------------------------------------
--- RAISE_MSG raises an error with the given msg
--- Allow SQL functions to throw errors
-CREATE OR REPLACE FUNCTION managed_code.RAISE_MSG(P_MSG TEXT) RETURNS BOOLEAN AS
+-- RAISE_MSG raises an error with the given msg if the P_PASS is false
+-- Otherwise, it returns P_VAL
+-- Allow SQL queries to conditionally throw errors
+-- If P_MSG is null or empty, then an error is raised regardless of P_PASS
+-- If P_PASS is null, then an error is raised
+CREATE OR REPLACE FUNCTION managed_code.RAISE_MSG(P_MSG TEXT, P_PASS BOOLEAN, P_VAL ANYELEMENT) RETURNS ANYELEMENT AS
 $$
 BEGIN
-  RAISE EXCEPTION '%', P_MSG;
+  IF LENGTH(COALESCE(P_MSG, '')) = 0 THEN
+    RAISE EXCEPTION 'P_MSG CANNOT BE NULL OR EMPTY';
+  END IF;
+
+  IF P_PASS IS NULL THEN
+    RAISE EXCEPTION 'P_PASS CANNOT BE NULL';
+  END IF;
+
+  IF P_PASS THEN
+    RETURN P_VAL;
+  ELSE
+    RAISE EXCEPTION '%', P_MSG;
+  END IF;
 END;
 $$ LANGUAGE PLPGSQL IMMUTABLE;
 
--- Test RAISE_MSG
-SELECT managed_code.TEST('the msg', 'SELECT managed_code.RAISE_MSG(''the msg'')');
+-- Test P_MSG IS null or empty
+SELECT managed_code.TEST('P_MSG CANNOT BE NULL OR EMPTY', $$SELECT managed_code.RAISE_MSG(NULL, FALSE, ''::TEXT)$$);
+SELECT managed_code.TEST('P_MSG CANNOT BE NULL OR EMPTY', $$SELECT managed_code.RAISE_MSG(''  , FALSE, ''::TEXT)$$);
+
+-- Test P_PASS IS null
+SELECT managed_code.TEST('P_PASS CANNOT BE NULL', $$SELECT managed_code.RAISE_MSG('the msg', NULL, ''::TEXT)$$);
+
+-- Test RAISE_MSG where P_PASS is false (error raised)
+SELECT managed_code.TEST('the msg', $$SELECT managed_code.RAISE_MSG('the msg', FALSE, ''::TEXT)$$);
+
+-- Test RAISE_MSG where P_PASS is true (value returned)
+SELECT managed_code.TEST('val', managed_code.RAISE_MSG('the msg', TRUE, 'val'::TEXT) = 'val');
+
+
+
+
+---------------------------------------------------------------------------------------------------
+-- RAISE_MSG_IF_EMPTY is an easier test for empty strings
+-- Returns P_VAL if it is non-nnull and non-empty, else raises P_MSG
+CREATE OR REPLACE FUNCTION managed_code.RAISE_MSG_IF_EMPTY(P_MSG TEXT, P_VAL TEXT) RETURNS TEXT AS
+$$
+BEGIN
+  RETURN managed_code.RAISE_MSG(P_MSG, LENGTH(COALESCE(P_VAL, '')) > 0, P_VAL);
+END;
+$$ LANGUAGE PLPGSQL IMMUTABLE;
+---------------------------------------------------------------------------------------------------
 
 
 
@@ -816,16 +855,13 @@ SELECT managed_code.TEST('the msg', 'SELECT managed_code.RAISE_MSG(''the msg'')'
 -- Note that if an array is passed that contains non-object elements, an exception is raised
 CREATE OR REPLACE FUNCTION managed_code.GET_JSONB_OBJ_ARR(P_NAME TEXT, P_VAL JSONB) RETURNS SETOF JSONB AS
 $$
-  WITH CHK_TYP AS (
+  WITH GET_TYP AS (
      SELECT JSONB_TYPEOF(P_VAL) AS jsonb_typ
   )
  ,VALIDATE AS (
     SELECT *
-          ,CASE
-             WHEN jsonb_typ IN ('object', 'array') THEN TRUE
-             ELSE managed_code.RAISE_MSG(format('%s is not a JSONB object or array of objects', P_NAME))
-           END AS v
-      FROM CHK_TYP
+          ,managed_code.RAISE_MSG(format('%s is not a JSONB object or array', P_NAME), jsonb_typ IN ('object', 'array'), P_VAL)
+      FROM GET_TYP
   )
  ,OBJ_ARR AS (
     SELECT *
@@ -841,11 +877,7 @@ $$
     SELECT JSONB_ARRAY_ELEMENTS(jsonb_arr)
       FROM OBJ_ARR
  )
- SELECT managed_code.IIF(
-          JSONB_TYPEOF(obj) = 'object'
-         ,obj
-         ,managed_code.RAISE_MSG(format('%s is not a JSONB object or array of objects', P_NAME))::text::jsonb
-        )
+ SELECT managed_code.RAISE_MSG(format('%s is not a JSONB object or array of objects', P_NAME), JSONB_TYPEOF(obj) = 'object', obj)
    FROM ELEMENTS;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
@@ -863,7 +895,7 @@ SELECT managed_code.TEST(
 
 -- Test GET_JSONB_OBJ_ARR(number) fails
 SELECT managed_code.TEST(
-  'p is not a JSONB object or array of objects'
+  'p is not a JSONB object or array'
  ,$$SELECT managed_code.GET_JSONB_OBJ_ARR('p', '1')$$
 );
 

@@ -458,9 +458,8 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
   )
 --  SELECT * FROM CUST_ADDR_REC;
  ,VALIDATE_CUSTOMER AS (
-    -- First name is non-null non-empty
-    -- need a separate raise function for dying if null or empty string
-    SELECT managed_code.IIF(LENGTH(COALESCE(first_name, '')) = 0, managed_code.RAISE_MSG(format('%s: customer firstName is required', ROW_IDX))::TEXT, first_name)
+    -- First name is required
+    SELECT managed_code.RAISE_MSG_IF_EMPTY(format('%s: customer firstName is required', ROW_IDX) ,first_name)
       FROM CUST_ADDR_REC
   )
  SELECT * FROM VALIDATE_CUSTOMER;
