@@ -260,11 +260,18 @@ $$ LANGUAGE PLPGSQL;
 --   P_TRUE_VAL : value to return if P_EXPR is true
 --   P_FALSE_VAL: value to return if P_EXPR is false or null
 --
--- Returns P_TRUE_VAL (which may be null) if P_EXPR is true, else P_FALSE_VAL (which may be null)
--- P_TRUE_VAL and P_FALSE_VAL can both be null
+-- Returns:
+--   NULL                            if P_EXPR IS NULL
+--   P_TRUE_VAL  (which may be null) if P_EXPR is true
+--   P_FALSE_VAL (which may be null) if P_EXPR is false
+--
 CREATE OR REPLACE FUNCTION managed_code.IIF(P_EXPR BOOLEAN, P_TRUE_VAL ANYELEMENT, P_FALSE_VAL ANYELEMENT) RETURNS ANYELEMENT AS
 $$
-  SELECT CASE WHEN P_EXPR THEN P_TRUE_VAL ELSE P_FALSE_VAL END;
+  SELECT CASE
+           WHEN P_EXPR IS NULL THEN NULL
+           WHEN P_EXPR         THEN P_TRUE_VAL
+           ELSE                     P_FALSE_VAL
+         END;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test IIF
@@ -272,16 +279,19 @@ SELECT *
   FROM (
     SELECT managed_code.TEST(format('managed_code.IIF(%s, %s, %s) must return %s', expr, tval, fval, res), managed_code.IIF(expr, tval, fval) IS NOT DISTINCT FROM res)
       FROM (VALUES
-              (TRUE , NULL, NULL, NULL)
+              (NULL , 'a' , 'b' , NULL)
+
+             ,(TRUE , NULL, NULL, NULL)
              ,(FALSE, NULL, NULL, NULL)
+
              ,(TRUE , NULL, 'b' , NULL)
              ,(FALSE, NULL, 'b' , 'b' )
              
-             ,(TRUE , 'a', NULL, 'a' )
-             ,(FALSE, 'a', NULL, NULL)
+             ,(TRUE , 'a', NULL , 'a' )
+             ,(FALSE, 'a', NULL , NULL)
              
-             ,(TRUE , 'a', 'b' , 'a' )
-             ,(FALSE, 'a', 'b' , 'b' )
+             ,(TRUE , 'a', 'b'  , 'a' )
+             ,(FALSE, 'a', 'b'  , 'b' )
            ) AS t (expr, tval, fval, res)
   ) t;
 ---------------------------------------------------------------------------------------------------
@@ -794,7 +804,7 @@ SELECT DISTINCT * FROM (
 
 
 ---------------------------------------------------------------------------------------------------
--- RAISE_MSG raises an error with the given msg if the P_PASS is false
+-- RAISE_MSG raises an error with the given msg if P_PASS is false
 -- Otherwise, it returns P_VAL
 -- Allow SQL queries to conditionally throw errors
 -- If P_MSG is null or empty, then an error is raised regardless of P_PASS
@@ -849,58 +859,134 @@ $$ LANGUAGE PLPGSQL IMMUTABLE;
 
 
 ---------------------------------------------------------------------------------------------------
--- GET_JSONB_OBJ_ARR tests that the parameter is a JSONB object or array
--- If not, it raises an exception that "<P_NAME> is not a JSONB object or array"
--- If so, it returns a table of the single object or object elements of the array
--- Note that if an array is passed that contains non-object elements, an exception is raised
-CREATE OR REPLACE FUNCTION managed_code.GET_JSONB_OBJ_ARR(P_NAME TEXT, P_VAL JSONB) RETURNS SETOF JSONB AS
+-- GET_JSONB_OBJ_ARR assumes that the parameter is a JSONB object or array of objects
+--
+-- If the parameter is not an object or array, no elements are returned
+-- If the an array is passed, only object elements are returned, any other typeof elements are filtered out
+-- This allows for simple implementation that does not raisse any errors.
+--
+CREATE OR REPLACE FUNCTION managed_code.GET_JSONB_OBJ_ARR(P_VAL JSONB) RETURNS SETOF JSONB AS
 $$
-  WITH GET_TYP AS (
+--  WITH PARAMS AS (
+--    SELECT '[1]'::JSONB AS P_VAL
+--  ),
+  WITH
+  GET_TYP AS (
      SELECT JSONB_TYPEOF(P_VAL) AS jsonb_typ
+--       FROM PARAMS
   )
- ,VALIDATE AS (
-    SELECT *
-          ,managed_code.RAISE_MSG(format('%s is not a JSONB object or array', P_NAME), jsonb_typ IN ('object', 'array'), P_VAL)
+--  SELECT * FROM GET_TYP;
+ ,OBJ_ARR AS (
+    SELECT managed_code.IIF(jsonb_typ = 'object', P_VAL, NULL) jsonb_obj
+          ,managed_code.IIF(jsonb_typ = 'array' , P_VAL, NULL) jsonb_arr
       FROM GET_TYP
   )
- ,OBJ_ARR AS (
-    SELECT *
-          ,managed_code.IIF(jsonb_typ = 'object', P_VAL, NULL) jsonb_obj
-          ,managed_code.IIF(jsonb_typ = 'array' , P_VAL, NULL) jsonb_arr
-      FROM VALIDATE
-  )
- ,ELEMENTS AS (
-    SELECT jsonb_obj AS obj
-      FROM OBJ_ARR
-     WHERE jsonb_obj IS NOT NULL
-     UNION ALL
-    SELECT JSONB_ARRAY_ELEMENTS(jsonb_arr)
-      FROM OBJ_ARR
- )
- SELECT managed_code.RAISE_MSG(format('%s is not a JSONB object or array of objects', P_NAME), JSONB_TYPEOF(obj) = 'object', obj)
-   FROM ELEMENTS;
-$$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+  SELECT jsonb_obj AS elem
+    FROM OBJ_ARR
+   WHERE jsonb_obj IS NOT NULL
+   UNION ALL
+  SELECT jsonb_elem
+    FROM (
+            SELECT JSONB_ARRAY_ELEMENTS(jsonb_arr) AS jsonb_elem
+              FROM OBJ_ARR
+         )
+   WHERE JSONB_TYPEOF(jsonb_elem) = 'object'
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
 
 -- Test GET_JSONB_OBJ_ARR(object) returns one row with the object
 SELECT managed_code.TEST(
   'Returns one row for object'
- ,managed_code.GET_JSONB_OBJ_ARR('p', '{"a":"b","c":"d"}') = '{"a":"b","c":"d"}'
+ ,managed_code.GET_JSONB_OBJ_ARR('{"a":"b","c":"d"}') = '{"a":"b","c":"d"}'
 );
 
--- Test GET_JSONB_OBJ_ARR(array) returns one row for each element of the array
+-- Test GET_JSONB_OBJ_ARR(array of one object) returns one row
 SELECT managed_code.TEST(
   'Returns one row for array of one object'
- ,managed_code.GET_JSONB_OBJ_ARR('p', '[{"a":"b","c":"d"}]') = '{"a":"b","c":"d"}'
+ ,managed_code.GET_JSONB_OBJ_ARR('[{"a":"b","c":"d"}]') = '{"a":"b","c":"d"}'
 );
 
--- Test GET_JSONB_OBJ_ARR(number) fails
+-- Test GET_JSONB_OBJ_ARR(array of two objects) returns two rows
 SELECT managed_code.TEST(
-  'p is not a JSONB object or array'
- ,$$SELECT managed_code.GET_JSONB_OBJ_ARR('p', '1')$$
+  'Returns two rows for array of two objects'
+ ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('[{"a":"b"},{"c":"d"}]')) = 2
 );
 
--- Test GET_JSONB_OBJ_ARR([number]) fails
+-- Test GET_JSONB_OBJ_ARR(array of two objects aand 1 number) returns two rows
 SELECT managed_code.TEST(
-  'p is not a JSONB object or array of objects'
- ,$$SELECT managed_code.GET_JSONB_OBJ_ARR('p', '[1]')$$
+  'Returns two rows for array of two objects'
+ ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('[{"a":"b"},1,{"c":"d"}]')) = 2
 );
+
+-- Test GET_JSONB_OBJ_ARR(NULL) returns no rows
+SELECT managed_code.TEST(
+  'Returns empty set for NULL'
+ ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR(NULL)) = 0
+);
+
+-- Test GET_JSONB_OBJ_ARR(number) returns no rows
+SELECT managed_code.TEST(
+  'Returns empty set for a number'
+ ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('1')) = 0
+);
+
+-- Test GET_JSONB_OBJ_ARR([number]) returns no rows
+SELECT managed_code.TEST(
+  'Returns empty set for an array of one number'
+ ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('[1]')) = 0
+);
+
+
+
+
+---------------------------------------------------------------------------------------------------
+-- VALIDATE_JSONB_SCHEMA validates that a JSONB object matches a schema
+-- P_NAME  : The name of the object being tested
+-- P_OBJ   : The object that has to match the schema
+-- P_SCHEMA: The schema to test against
+-- P_REQD  : A text array of required key names
+--
+-- The schema is a flat schema (each key describes a top level object key of P_OBJ), described
+-- as follows:
+--   - The key name is the name of a key in P_OBJ
+--   - The key value is one of the following strings: array, object, string, number, boolean
+--
+-- The optional P_REQD array indicates which keys must be non-null, any other key can be absent
+-- or null
+--
+-- Instead of raising errors, a JSONB array of objects is returned, with each object containing
+-- any errors in the form of <key with an error>: <text error message>. If a given input object
+-- has no errors, then the resulting object will be empty.
+--
+-- These are the error messages for a given key:
+-- - Required
+-- - Expected X, got Y (eg, expected string, got boolean)
+---------------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
+$$
+  -- One or more rows of JONSB objects
+  WITH OBJS AS (
+    SELECT GET_JSONB_OBJ_ARR AS OBJ
+      FROM managed_code.GET_JSONB_OBJ_ARR(P_OBJ)
+  )
+ ,OBJ_KEY_VALUES AS (
+    SELECT * -- key (TEXT), value (JSONB)
+      FROM JSONB_EACH(OBJ)
+  )
+ ,SCHEMA_KEY_VALUES AS (
+    SELECT * -- key (TEXT), value (TEXT)
+      FROM JSONB_EACH_TEXT(P_SCHEMA)
+  )
+ ,SCHEMA_REQUIRED AS (
+    SELECT UNNEST AS KEY
+      FROM UNNEST(P_REQD)
+  )
+ ,REQ_KEYS_SUB_ACTUAL AS (
+    SELECT KEY
+      FROM SCHEMA_REQUIRED
+     WHERE NOT KEY IN (SELECT KEY FROM OBJ_KEY_VALUES)
+  )
+ ,VALIDATE_SCHEMA_KEY_VALUES AS (
+
+END;
+-- managed_code.RAISE_MSG(P_MSG TEXT, P_PASS BOOLEAN, P_VAL ANYELEMENT) RETURNS ANYELEMENT AS
+$$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;

@@ -410,7 +410,7 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
 --END;
 --$$ LANGUAGE plpgsql SECURITY DEFINER;
 
---CREATE OR REPLACE FUNCTION UPSERT_CUSTOMER_PERSONS(P_CUST_ADDRS JSONB) RETURNS JSONB AS
+--CREATE OR REPLACE FUNCTION VALIDATE_CUSTOMER_PERSON(P_CUST_PERSON JSONB) RETURNS JSONB AS
 --$$
 --BEGIN
   WITH
@@ -422,10 +422,11 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
                 ,'middleName' , 'Sienna'
                 ,'lastName'   , 'Jones'
                 ,'address'    , JSONB_BUILD_OBJECT(
-                                  'country', 'CA'
-                                 ,'region' , 'AB'
-                                 ,'city'   , 'Calgary'
-                                 ,'address', '123 Sesame St'
+                                  'country'    , 'CA'
+                                 ,'region'     , 'AB'
+                                 ,'city'       , 'Calgary'
+                                 ,'address'    , '123 Sesame St'
+                                 ,'mailingCode', 'T1T 1T1'
                                 )
              )
             ,JSONB_BUILD_OBJECT(
@@ -434,11 +435,11 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
                 ,'middleName' , 'John'
                 ,'lastName'   , 'James'
              )
-           ) AS P_CUST_ADDRS
+           ) AS P_CUST_PERSON
   ),
 --  SELECT * FROM DATA;
 --  WITH
-  CUST_ADDR_REC AS (
+  CUST_REC AS (
     SELECT managed_code.ID_TO_RELID(CUST_ADDR #>> '{id}')     AS ID
           ,CUST_ADDR #>> '{version}'                          AS VERSION
           ,CUST_ADDR #>> '{description}'                      AS DESCRIPTION
@@ -449,20 +450,57 @@ $$ LANGUAGE SQL STABLE LEAKPROOF SECURITY DEFINER;
           ,CUST_ADDR #>> '{firstName}'                        AS FIRST_NAME
           ,CUST_ADDR #>> '{middleName}'                       AS MIDDLE_NAME
           ,CUST_ADDR #>> '{lastName}'                         AS LAST_NAME
-          ,CUST_ADDR #>  '{address}'                          AS ADDRESS
-          ,ROW_NUMBER() OVER() - 1                              AS ROW_IDX
+          ,ROW_NUMBER() OVER() - 1                            AS ROW_IDX
       FROM (
-        SELECT JSONB_ARRAY_ELEMENTS(P_CUST_ADDRS) AS CUST_ADDR
+        SELECT JSONB_ARRAY_ELEMENTS(P_CUST_PERSON) AS CUST_PERSON
           FROM DATA
       ) t
   )
 --  SELECT * FROM CUST_ADDR_REC;
  ,VALIDATE_CUSTOMER AS (
-    -- First name is required
-    SELECT managed_code.RAISE_MSG_IF_EMPTY(format('%s: customer firstName is required', ROW_IDX) ,first_name)
+    -- First and last name are required
+    SELECT managed_code.RAISE_MSG_IF_EMPTY(format('%s: customer firstName is required', ROW_IDX), first_name) AS IRST_NAME
+          ,managed_code.RAISE_MSG_IF_EMPTY(format('%s: customer lastName is required' , ROW_IDX), last_name ) AS LAST_NAME
+          ,*
       FROM CUST_ADDR_REC
   )
- SELECT * FROM VALIDATE_CUSTOMER;
+-- SELECT * FROM VALIDATE_CUSTOMER;
+ ,ADDR_REC AS (
+    SELECT *
+          ,managed_code.ID_TO_RELID(ADDRESS #>> '{id}')     AS ADDR_ID
+          ,ADDRESS #>> '{version}'                          AS ADDR_VERSION
+          ,ADDRESS #>> '{description}'                      AS ADDR_DESCRIPTION
+          ,TO_TSVECTOR('english', ADDRESS #>> '{terms}')    AS ADDR_TERMS
+          ,ADDRESS #>  '{extra}'                            AS ADDR_EXTRA
+          ,managed_code.FROM_8601(ADDRESS #>> '{created}')  AS ADDR_CREATED
+          ,managed_code.FROM_8601(ADDRESS #>> '{modified}') AS ADDR_MODIFIED
+          ,ADDRESS #>> '{country}'                          AS ADDR_COUNTRY
+          ,ADDRESS #>> '{region}'                           AS ADDR_REGION
+          ,ADDRESS #>> '{city}'                             AS ADDR_CITY
+          ,ADDRESS #>  '{address}'                          AS ADDR_ADDRESS
+          ,ADDRESS #>  '{mailingCode}'                      AS ADDR_MAILING_CODE
+     FROM VALIDATE_CUSTOMER
+  )
+ ,ADDR_VALIDATE AS (
+    SELECT *
+      FROM ADDR_REC
+     WHERE ADDRESS IS NULL
+     UNION ALL
+    SELECT ID
+          ,VERSION
+          ,DESCRIPTION
+          ,TERMS
+          ,EXTRA
+          ,CREATED
+          ,MODIFIED
+          ,FIRST_NAME
+          ,LAST_NAME
+          ,ROW_IDX
+          ,
+      FROM ADDR_REC
+     WHERE ADDRESS IS NOT NULL
+ )
+ SELECT * FROM ADDR_REC;
 --
 --  -- Must have a country
 -- ,COUNTRY_RELIDS AS (
