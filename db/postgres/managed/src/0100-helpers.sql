@@ -949,13 +949,17 @@ SELECT managed_code.TEST(
 --   - The key name is the name of a key in P_OBJ
 --   - The key value is one of the following strings:
 --     - array, object, string, number, boolean, date, timestamp
+
+HANDLE P_OBJ OR P_SCHEMA ARE EMPTY
+HANDLE DATE AND TIMESTAMP
+
 --
 -- The optional P_REQD array indicates which keys must be non-null, any other key can be absent
 -- or null
 --
--- Instead of raising errors, a JSONB array of objects is returned, with each object containing
--- any errors in the form of <key with an error>: <text error message>. If a given input object
--- has no errors, then the resulting object will be empty.
+-- Instead of raising errors, a JSONB objects is returned, where each key name is the name of a parameter or object key
+-- that has an error associated with it.
+-- If the input object has no errors, then the resulting object will be empty.
 --
 -- If the parameters are invalid the following errors can be returned: (max one error per parameter)
 -- {"P_OBJ": "must be an object"}
@@ -973,25 +977,27 @@ SELECT managed_code.TEST(
 CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
 $$
   -- Hard-coded data for debugging
-  WITH PARAMS AS (
-    SELECT '{"furstName"; "Avery", "middleName": "Sienna", "lastName": "Jones"}'::JSONB AS P_OBJ
-          ,''::JSONB AS P_SCHEMA
-          ,ARRAY['firstName', 'lastName']::TEXT[]                                         AS P_REQD
-  ),
+--  WITH PARAMS AS (
+--    SELECT '{"firstName": "Avery", "middleName": "Sienna", "lastName": "Jones"}'::JSONB AS P_OBJ
+--          ,'{"firstName": "string", "middleName": "string", "lastName": "string"}'::JSONB AS P_SCHEMA
+--          ,ARRAY['firstName', 'lastName']::TEXT[]                                       AS P_REQD
+--  ),
 --  SELECT * FROM PARAMS;
 
   -- Check if the P_OBJ and P_SCHEMA parameters are JSONB objects
   -- If not, convert them to empty objects to make further CTEs easier
+  WITH
   PARAMS_WITH_TYPES AS (
     SELECT managed_code.IIF(P_OBJ_TYPE    = 'object', P_OBJ   , '{}') AS P_OBJ
           ,managed_code.IIF(P_SCHEMA_TYPE = 'object', P_SCHEMA, '{}') AS P_SCHEMA
           ,P_OBJ_TYPE
           ,P_SCHEMA_TYPE
       FROM (
-              SELECT *
-                    ,JSONB_TYPEOF(P_OBJ)    AS P_OBJ_TYPE
+              SELECT
+--                    *,
+                     JSONB_TYPEOF(P_OBJ)    AS P_OBJ_TYPE
                     ,JSONB_TYPEOF(P_SCHEMA) AS P_SCHEMA_TYPE
-                FROM PARAMS
+--                FROM PARAMS
            ) t
   )
 --  SELECT * FROM PARAMS_WITH_TYPES;
@@ -999,10 +1005,10 @@ $$
   -- Validate that P_OBJ and P_SCHEMA parameters are JSONB objects,
   -- producing errors if they are not
  ,VALIDATE_PARAMS AS (
-    SELECT JSONB_BUILD_ARRAY(
-                managed_code.IIF(P_OBJ_TYPE    = 'object', '{}'::JSONB, '{"P_OBJ"   : "must be an object"}')
-             || managed_code.IIF(P_SCHEMA_TYPE = 'object', '{}'::JSONB, '{"P_SCHEMA": "must be an object"}')
-           ) AS PARAM_ERRORS
+    SELECT '{}'::JSONB
+           || managed_code.IIF(P_OBJ_TYPE    = 'object', '{}'::JSONB, '{"P_OBJ"   : "must be an object"}')
+           || managed_code.IIF(P_SCHEMA_TYPE = 'object', '{}'::JSONB, '{"P_SCHEMA": "must be an object"}')
+           AS PARAM_ERRORS
       FROM PARAMS_WITH_TYPES
   )
 --  SELECT * FROM VALIDATE_PARAMS;
@@ -1033,27 +1039,45 @@ $$
   -- Keys defined in schema as one type that are defined in object as another type
   -- EG, schema expects key X to be a string, but object key X is a number
  ,VALIDATE_OBJECT_TO_SCHEMA AS (
-    SELECT COALESCE(JSONB_AGG(t), '[]'::JSONB) AS SCHEMA_ERRORS
+    SELECT COALESCE(JSONB_OBJECT_AGG(OBJ_KEY, ERROR), '{}'::JSONB) AS SCHEMA_ERRORS
       FROM (
-              SELECT
-                JSONB_BUILD_OBJECT(
-                  'error'
-                  ,format('%s is expected to be a(n) %s, but it is a(n) %s', OBJ_KEY, SCHEMA_VALUE_TYPE, OBJ_VALUE_TYPE)
-                )
-                FROM OBJ_KEY_VALUES okv
-                JOIN SCHEMA_KEY_VALUES skv
-                  ON skv.SCHEMA_KEY = okv.OBJ_KEY
-               WHERE (skv.SCHEMA_VALUE_TYPE != okv.OBJ_VALUE_TYPE)
-                 AND (okv.OBJ_VALUE_TYPE != 'null')
-           ) AS t
+        SELECT *
+          FROM (
+            SELECT OBJ_KEY
+                  ,CASE
+                     -- Schema and object have same key with different types
+                   WHEN skv.SCHEMA_VALUE_TYPE IS NOT NULL
+                    AND okv.OBJ_VALUE_TYPE    IS NOT NULL
+                    AND okv.OBJ_VALUE_TYPE    != 'null'
+                    AND skv.SCHEMA_VALUE_TYPE != okv.OBJ_VALUE_TYPE
+                   THEN format(
+                          'Expected %s, not %s'
+                          ,SCHEMA_VALUE_TYPE
+                          ,OBJ_VALUE_TYPE
+                        )
+
+                     -- Object has key that schema does not
+                   WHEN okv.OBJ_KEY    IS NOT NULL
+                    AND skv.SCHEMA_KEY IS     NULL
+                   THEN 'Unexpected'
+                    END AS ERROR
+              FROM OBJ_KEY_VALUES okv
+              FULL
+              JOIN SCHEMA_KEY_VALUES skv
+                ON skv.SCHEMA_KEY = okv.OBJ_KEY
+          )
+         WHERE OBJ_KEY != ''
+               AND ERROR IS NOT NULL
+       )
   )
 --  SELECT * FROM VALIDATE_OBJECT_TO_SCHEMA;
+
 
  ,SCHEMA_REQUIRED AS (
     SELECT UNNEST AS REQD_KEY
       FROM UNNEST(
---             P_REQD
-             (SELECT P_REQD FROM PARAMS)
+             P_REQD
+--             (SELECT P_REQD FROM PARAMS)
            )
   )
 --  SELECT * FROM SCHEMA_REQUIRED;
@@ -1061,13 +1085,11 @@ $$
  ,VALIDATE_REQUIRED AS (
     -- All required keys that do not occur in a given object keys
     SELECT COALESCE(
-             JSONB_AGG(
-               JSONB_BUILD_OBJECT(
-                 REQD_KEY
-                ,'Required'
-               )
+             JSONB_OBJECT_AGG(
+               REQD_KEY
+              ,'Required'
              )
-            ,'[]'::JSONB
+            ,'{}'::JSONB
            ) AS MISSING_ERRORS
       FROM SCHEMA_REQUIRED sr
       LEFT JOIN OBJ_KEY_VALUES  okv
@@ -1075,7 +1097,7 @@ $$
      WHERE (okv.OBJ_KEY IS NULL)
         OR (okv.OBJ_VALUE_TYPE = 'null')
   )
---  SELECT * FROM VALIDATE_REQUIRED;
+--   SELECT * FROM VALIDATE_REQUIRED;
 
   -- Return the preferred errors, as follows:
   -- If there are errors for parameters (P_OBJ and P_SCHEMA), return only those errors, as they indicate an invalid call
@@ -1083,8 +1105,7 @@ $$
   --   - Object has keys with incorrect type of values
   --   - Object is missing required keys
 
-  SELECT
-         managed_code.IIF(
+  SELECT managed_code.IIF(
            PARAM_ERRORS != '{}'::JSONB
           ,PARAM_ERRORS
           ,SCHEMA_ERRORS || MISSING_ERRORS
