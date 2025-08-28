@@ -950,8 +950,8 @@ SELECT managed_code.TEST(
 --   - The key value is one of the following strings:
 --     - array, object, string, number, boolean, date, timestamp
 
-HANDLE P_OBJ OR P_SCHEMA ARE EMPTY
-HANDLE DATE AND TIMESTAMP
+--HANDLE P_OBJ OR P_SCHEMA ARE EMPTY
+--HANDLE DATE AND TIMESTAMP
 
 --
 -- The optional P_REQD array indicates which keys must be non-null, any other key can be absent
@@ -978,7 +978,7 @@ CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCH
 $$
   -- Hard-coded data for debugging
 --  WITH PARAMS AS (
---    SELECT '{"firstName": "Avery", "middleName": "Sienna", "lastName": "Jones"}'::JSONB AS P_OBJ
+--    SELECT '{}'::JSONB AS P_OBJ --'{"firstName": "Avery", "middleName": "Sienna", "lastName": "Jones"}'::JSONB AS P_OBJ
 --          ,'{"firstName": "string", "middleName": "string", "lastName": "string"}'::JSONB AS P_SCHEMA
 --          ,ARRAY['firstName', 'lastName']::TEXT[]                                       AS P_REQD
 --  ),
@@ -1006,8 +1006,10 @@ $$
   -- producing errors if they are not
  ,VALIDATE_PARAMS AS (
     SELECT '{}'::JSONB
-           || managed_code.IIF(P_OBJ_TYPE    = 'object', '{}'::JSONB, '{"P_OBJ"   : "must be an object"}')
-           || managed_code.IIF(P_SCHEMA_TYPE = 'object', '{}'::JSONB, '{"P_SCHEMA": "must be an object"}')
+           || managed_code.IIF(P_OBJ_TYPE    =  'object', '{}'::JSONB, '{"P_OBJ"   : "must be an object"}')
+           || managed_code.IIF(P_OBJ         != '{}'    , '{}'::JSONB, '{"P_OBJ"   : "must have at least one key"}')
+           || managed_code.IIF(P_SCHEMA_TYPE =  'object', '{}'::JSONB, '{"P_SCHEMA": "must be an object"}')
+           || managed_code.IIF(P_SCHEMA_TYPE != '{}'    , '{}'::JSONB, '{"P_SCHEMA": "must have at least one key"}')
            AS PARAM_ERRORS
       FROM PARAMS_WITH_TYPES
   )
