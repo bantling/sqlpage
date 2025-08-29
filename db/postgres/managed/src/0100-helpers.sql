@@ -876,6 +876,7 @@ $$
 --       FROM PARAMS
   )
 --  SELECT * FROM GET_TYP;
+
  ,OBJ_ARR AS (
     SELECT managed_code.IIF(jsonb_typ = 'object', P_VAL, NULL) jsonb_obj
           ,managed_code.IIF(jsonb_typ = 'array' , P_VAL, NULL) jsonb_arr
@@ -891,7 +892,7 @@ $$
               FROM OBJ_ARR
          )
    WHERE JSONB_TYPEOF(jsonb_elem) = 'object'
-$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+$$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test GET_JSONB_OBJ_ARR(object) returns one row with the object
 SELECT managed_code.TEST(
@@ -948,16 +949,13 @@ SELECT managed_code.TEST(
 -- as follows:
 --   - The key name is the name of a key in P_OBJ
 --   - The key value is one of the following strings:
---     - array, object, string, number, boolean, date, timestamp
-
---HANDLE DATE AND TIMESTAMP
-
+--     - array, object, string, number, boolean
 --
 -- The optional P_REQD array indicates which keys must be non-null, any other key can be absent
 -- or null
 --
--- Instead of raising errors, a JSONB objects is returned, where each key name is the name of a parameter or object key
--- that has an error associated with it.
+-- Instead of raising errors, a JSONB object is returned, where each key name is the name of a parameter or object key that
+-- has an error associated with it.
 -- If the input object has no errors, then the resulting object will be empty.
 --
 -- If the parameters are invalid the following errors can be returned: (max one error per parameter)
@@ -969,20 +967,21 @@ SELECT managed_code.TEST(
 -- When there are errors in the parameters, only those errors are returned
 --
 -- If there are no parameter errors, and the object does not match the schema, the following errors can be returned:
--- {"keyName": "Expected X, got Y"} (eg, {"firstName": "Expected string, got boolean"})
+-- {"keyName": "Expected X, not Y"} (eg, {"firstName": "Expected string, not boolean"})
 -- {"keyName": "Required"}          (eg, {"firstName": "Required"}, indicating a missing key that is required)
--- {"keyName": "Unexpected"}        (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part of the schema)
+-- {"keyName": "Unexpected"}        (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part of the
+-- schema)
 ---------------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
 $$
   -- Hard-coded data for debugging
 --  WITH PARAMS AS (
---    SELECT '{"firstName": "Avery", "middleName": "Sienna", "lastName": "Jones"}'::JSONB AS P_OBJ
---          ,'{"firstName": "string", "middleName": "string", "lastName": "string"}'::JSONB AS P_SCHEMA
+--    SELECT '{}'::JSONB AS P_OBJ
+--          ,'{}'::JSONB AS P_SCHEMA
 --          ,ARRAY['firstName', 'lastName']::TEXT[]                                       AS P_REQD
 --  )
---  ,
 --  SELECT * FROM PARAMS;
+--  ,
 
   -- Check if the P_OBJ and P_SCHEMA parameters are JSONB objects
   -- If not, convert them to empty objects to make further CTEs easier
@@ -995,8 +994,8 @@ $$
       FROM (
               SELECT
 --                    *,
-                     JSONB_TYPEOF(P_OBJ)    AS P_OBJ_TYPE
-                    ,JSONB_TYPEOF(P_SCHEMA) AS P_SCHEMA_TYPE
+                     COALESCE(JSONB_TYPEOF(P_OBJ)   , 'null') AS P_OBJ_TYPE
+                    ,COALESCE(JSONB_TYPEOF(P_SCHEMA), 'null') AS P_SCHEMA_TYPE
 --                FROM PARAMS
            ) t
   )
@@ -1006,10 +1005,14 @@ $$
   -- producing errors if they are not
  ,VALIDATE_PARAMS AS (
     SELECT '{}'::JSONB
-           || managed_code.IIF(P_OBJ_TYPE    =  'object', '{}'::JSONB, '{"P_OBJ"   : "must be an object"}')
-           || managed_code.IIF(P_OBJ         != '{}'    , '{}'::JSONB, '{"P_OBJ"   : "must have at least one key"}')
-           || managed_code.IIF(P_SCHEMA_TYPE =  'object', '{}'::JSONB, '{"P_SCHEMA": "must be an object"}')
-           || managed_code.IIF(P_SCHEMA      != '{}'    , '{}'::JSONB, '{"P_SCHEMA": "must have at least one key"}')
+           || CASE WHEN P_OBJ_TYPE != 'object' THEN '{"P_OBJ"   : "must be an object"}'
+                   WHEN P_OBJ      =  '{}'     then '{"P_OBJ"   : "must have at least one key"}'
+                   ELSE '{}'
+              END::JSONB
+           || CASE WHEN P_SCHEMA_TYPE != 'object' THEN '{"P_SCHEMA"   : "must be an object"}'
+                   WHEN P_SCHEMA      =  '{}'     then '{"P_SCHEMA"   : "must have at least one key"}'
+                   ELSE '{}'
+              END::JSONB
            AS PARAM_ERRORS
       FROM PARAMS_WITH_TYPES
   )
@@ -1116,3 +1119,5 @@ $$
         ,VALIDATE_OBJECT_TO_SCHEMA
         ,VALIDATE_REQUIRED;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
+
+-- Test VALIDATE_JSONB_SCHEMA(NULL P_OBJ) returns {"P_OBJ" :"cannot be null"}
