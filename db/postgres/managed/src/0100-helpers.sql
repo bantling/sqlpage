@@ -971,12 +971,12 @@ SELECT managed_code.TEST(
 -- When there are errors in the parameters, only those errors are returned
 --
 -- If there are no parameter errors, and the object does not match the schema, the following errors can be returned:
--- {"keyName": "Expected X, not Y"} (eg, {"firstName": "Expected string, not boolean"})
--- {"keyName": "Invalid ISO 8601 datetime"}
--- {"keyName": "Invalid ISO 8601 date"}
--- {"keyName": "Required"}          (eg, {"firstName": "Required"}, indicating a missing key that is required)
--- {"keyName": "Unexpected"}        (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part of
--- the schema)
+-- {"keyName": "Expected X, not Y"}        (eg, {"firstName" : "Expected string, not boolean"})
+-- {"keyName": "Expected datetime, not X"} (eg, {"created"   : "Expected datetime, not Bob"})
+-- {"keyName": "Invalid date, not X"}      (eg, {"birthDate" : "Expected date, not Bob"})
+-- {"keyName": "Required"}                 (eg, {"firstName" : "Required"}, indicating a missing key that is required)
+-- {"keyName": "Unexpected"}               (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part
+--   of the schema)
 ---------------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
 $$
