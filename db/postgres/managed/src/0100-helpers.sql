@@ -949,7 +949,11 @@ SELECT managed_code.TEST(
 -- as follows:
 --   - The key name is the name of a key in P_OBJ
 --   - The key value is one of the following strings:
---     - array, object, string, number, boolean
+--     - array, object, string, number, boolean, datetime, date
+--
+-- datetime and date are both passed as JSNB string values.
+-- A regex is used to confirm that a datetime is a valid ISO 8601 value
+-- A datetime can be in any timezone, it will be stored as UTC, rounded to milliseconds
 --
 -- The optional P_REQD array indicates which keys must be non-null, any other key can be absent
 -- or null
@@ -968,17 +972,19 @@ SELECT managed_code.TEST(
 --
 -- If there are no parameter errors, and the object does not match the schema, the following errors can be returned:
 -- {"keyName": "Expected X, not Y"} (eg, {"firstName": "Expected string, not boolean"})
+-- {"keyName": "Invalid ISO 8601 datetime"}
+-- {"keyName": "Invalid ISO 8601 date"}
 -- {"keyName": "Required"}          (eg, {"firstName": "Required"}, indicating a missing key that is required)
--- {"keyName": "Unexpected"}        (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part of the
--- schema)
+-- {"keyName": "Unexpected"}        (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part of
+-- the schema)
 ---------------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
 $$
   -- Hard-coded data for debugging
 --  WITH PARAMS AS (
---    SELECT '{}'::JSONB AS P_OBJ
---          ,'{}'::JSONB AS P_SCHEMA
---          ,ARRAY['firstName', 'lastName']::TEXT[]                                       AS P_REQD
+--    SELECT '{"firstName": "Avery", "today": "2025-08-31"}'::JSONB AS P_OBJ
+--          ,'{"firstName": "string", "today": "date"}'::JSONB AS P_SCHEMA
+--          ,ARRAY['firstName', 'today']::TEXT[]                                       AS P_REQD
 --  )
 --  SELECT * FROM PARAMS;
 --  ,
@@ -1037,7 +1043,7 @@ $$
       FROM JSONB_EACH_TEXT(
              (SELECT P_SCHEMA FROM PARAMS_WITH_TYPES)
            )
-     WHERE VALUE IN ('array', 'object', 'string', 'number', 'boolean')
+     WHERE VALUE IN ('array', 'object', 'string', 'number', 'boolean', 'datetime', 'date')
   )
 --  SELECT * FROM SCHEMA_KEY_VALUES;
 
@@ -1050,15 +1056,34 @@ $$
           FROM (
             SELECT OBJ_KEY
                   ,CASE
-                     -- Schema and object have same key with different types
+                     -- Special case of datetime
+                   WHEN skv.SCHEMA_VALUE_TYPE = 'datetime'
+                    AND okv.OBJ_VALUE_TYPE    = 'string'
+                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3,9}(Z|[+-][0-9]{2}:[0-9]{2})'
+                   THEN format(
+                          'Expected datetime, not %s'
+                         ,okv.OBJ_VALUE #>> '{}'
+                        )
+
+                     -- Special case of date
+                   WHEN skv.SCHEMA_VALUE_TYPE = 'date'
+                    AND okv.OBJ_VALUE_TYPE    = 'string'
+                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                   THEN format(
+                          'Expected date, not %s'
+                          ,okv.OBJ_VALUE #>> '{}'
+                        )
+
+                     -- General case of schema and object have same key with different types
                    WHEN skv.SCHEMA_VALUE_TYPE IS NOT NULL
+                    AND skv.SCHEMA_VALUE_TYPE NOT IN ('datetime', 'date')
                     AND okv.OBJ_VALUE_TYPE    IS NOT NULL
                     AND okv.OBJ_VALUE_TYPE    != 'null'
                     AND skv.SCHEMA_VALUE_TYPE != okv.OBJ_VALUE_TYPE
                    THEN format(
                           'Expected %s, not %s'
                           ,SCHEMA_VALUE_TYPE
-                          ,OBJ_VALUE_TYPE
+                          ,okv.OBJ_VALUE_TYPE
                         )
 
                      -- Object has key that schema does not
