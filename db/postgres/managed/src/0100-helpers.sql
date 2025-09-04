@@ -26,7 +26,7 @@ $$ LANGUAGE PLPGSQL IMMUTABLE;
 -- TEST(TEXT, TEXT): test a function for a case that raises an exception
 --   P_ERR   : expected exception text (cannot be null or empty)
 --   P_QUERY : string query to execute (cannot be null or empty)
--- 
+--
 -- Returns true if executing P_QUERY raises an exception with message P_ERR
 -- It is a function so it can be used in select, making it easy and useful for unit tests
 -- If the query does not fail, or fails with a different exception message, then
@@ -41,7 +41,7 @@ BEGIN
   IF LENGTH(COALESCE(P_ERR, '')) = 0 THEN
     RAISE EXCEPTION 'P_ERR cannot be null or empty';
   END IF;
-  
+
   -- P_QUERY cannot be NULL or EMPTY
   IF LENGTH(COALESCE(P_QUERY, '')) = 0 THEN
     RAISE EXCEPTION 'P_QUERY cannot be null or empty';
@@ -56,19 +56,19 @@ BEGIN
     WHEN OTHERS THEN
       GET STACKED DIAGNOSTICS V_ERR = MESSAGE_TEXT;
   END;
-  
+
   CASE
     -- Did an exception occur?
     WHEN NOT V_DIED
     THEN RAISE EXCEPTION 'Expected exception ''%'' did not occur', P_ERR;
-  
+
     -- If an exception is expected, does it have the right text?
     WHEN NOT V_ERR = P_ERR
     THEN RAISE EXCEPTION 'The expected exception message ''%'' does not match the actual message ''%'' for ''%''', P_ERR, V_ERR, P_QUERY;
-    
+
     ELSE NULL;
   END CASE;
-  
+
   -- Success
   RETURN TRUE;
 END;
@@ -89,12 +89,12 @@ BEGIN
       GET STACKED DIAGNOSTICS V_MSG = MESSAGE_TEXT;
       IF NOT V_MSG = 'P_MSG cannot be null or empty' THEN
         RAISE EXCEPTION 'managed_code.TEST must die with P_MSG cannot be null or empty';
-      END IF;  
+      END IF;
   END;
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_MSG is NULL';
   END IF;
-  
+
   BEGIN
     V_DIED := TRUE;
     SELECT managed_code.TEST('', NULL::BOOLEAN);
@@ -104,12 +104,12 @@ BEGIN
       GET STACKED DIAGNOSTICS V_MSG = MESSAGE_TEXT;
       IF NOT V_MSG = 'P_MSG cannot be null or empty' THEN
         RAISE EXCEPTION 'managed_code.TEST must die with P_MSG cannot be null or empty';
-      END IF;  
+      END IF;
   END;
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_MSG is empty';
   END IF;
-  
+
   BEGIN
     V_DIED := TRUE;
     SELECT managed_code.TEST('TEST', NULL::BOOLEAN);
@@ -174,7 +174,7 @@ BEGIN
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_MSG is NULL';
   END IF;
-  
+
   -- P_ERR cannot be empty
   BEGIN
     V_DIED := TRUE;
@@ -190,7 +190,7 @@ BEGIN
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_MSG is empty';
   END IF;
-  
+
   -- P_QUERY cannot be null
   BEGIN
     V_DIED := TRUE;
@@ -206,7 +206,7 @@ BEGIN
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_QUERY is NULL';
   END IF;
-  
+
   -- P_QUERY cannot be empty
   BEGIN
     V_DIED := TRUE;
@@ -222,7 +222,7 @@ BEGIN
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_QUERY is empty';
   END IF;
-  
+
   -- Test error calling COALESCE(), where the error message provided IS correct
   BEGIN
     SELECT managed_code.TEST('syntax error at or near ")"', 'SELECT COALESCE()') INTO V_RES;
@@ -231,7 +231,7 @@ BEGIN
       GET STACKED DIAGNOSTICS V_MSG = MESSAGE_TEXT;
       RAISE EXCEPTION 'managed_code.TEST COALESCE() died when we provided correct error message: %', V_MSG;
   END;
-  
+
   -- Test error calling COALESCE(), where the error message provided IS NOT correct
   BEGIN
     V_DIED := TRUE;
@@ -277,7 +277,10 @@ $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 -- Test IIF
 SELECT *
   FROM (
-    SELECT managed_code.TEST(format('managed_code.IIF(%s, %s, %s) must return %s', expr, tval, fval, res), managed_code.IIF(expr, tval, fval) IS NOT DISTINCT FROM res)
+    SELECT managed_code.TEST(
+             format('managed_code.IIF(%s, %s, %s) must return %s', expr, tval, fval, res)
+            ,managed_code.IIF(expr, tval, fval) IS NOT DISTINCT FROM res
+           )
       FROM (VALUES
               (NULL , 'a' , 'b' , NULL)
 
@@ -308,17 +311,17 @@ SELECT *
 -- Unlike CONCAT_WS, the nulls and empty strings are removed first, eliminating consecutive separators 
 CREATE OR REPLACE FUNCTION managed_code.NEMPTY_WS(P_SEP TEXT, P_STRS VARIADIC TEXT[]) RETURNS TEXT AS
 $$
-  SELECT STRING_AGG(strs, P_SEP)
-    FROM (SELECT UNNEST(P_STRS) strs) t
-   WHERE LENGTH(COALESCE(strs, '')) > 0
+  SELECT STRING_AGG(str, P_SEP)
+    FROM (SELECT UNNEST(P_STRS) str) t
+   WHERE LENGTH(COALESCE(str, '')) > 0
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test NEMPTY_WS
 SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT DISTINCT FROM res) nempty_ws
   FROM (VALUES
-          ('NEMPTY_WS must return NULL 1' , ARRAY[                                             ]::TEXT[], NULL     )
-         ,('NEMPTY_WS must return NULL 2' , ARRAY[NULL                                         ]::TEXT[], NULL     )
-         ,('NEMPTY_WS must return NULL 3' , ARRAY[NULL, NULL                                   ]::TEXT[], NULL     )
+          ('NEMPTY_WS must return NULL'   , ARRAY[                                             ]::TEXT[], NULL     )
+         ,('NEMPTY_WS must return NULL'   , ARRAY[NULL                                         ]::TEXT[], NULL     )
+         ,('NEMPTY_WS must return NULL'   , ARRAY[NULL, NULL                                   ]::TEXT[], NULL     )
          ,('NEMPTY_WS must return a'      , ARRAY['a'                                          ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY[NULL, 'a'                                    ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY['a' , NULL                                   ]        , 'a'      )
@@ -342,11 +345,13 @@ SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT 
 -- P_MIN     : The minimum value
 -- P_MAX     : The maximum value
 -- P_CRYPTO  : Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
+--
 -- Generate random numbers. If P_CRYPTO is true (default is false) a fairly even distribution is generated.
 -- The ordinary random() function is quite skewed, and will favour some values over others, but is much faster.
 -- It does not matter if P_MAX and/or P_MIN are negative, or if P_MAX < P_MIN.
--- The result will be always in the closed range starting at LEAST(P_MIN, P_MAX) and counting towards positive infinity.
+-- The result will be always in the closed range starting at LEAST(P_MIN, P_MAX) and counting towards positive infinity
 -- for ABS(P_MAX)-ABS(P_MIN)+1 values.
+--
 -- EG:
 --  1. P_MIN, P_MAX =    5,  100: values will be the range [   5, 100]
 --  2. P_MIN, P_MAX =  100,    5: values will be the range [   5, 100]
@@ -516,10 +521,10 @@ SELECT managed_code.TEST(
 
 
 ---------------------------------------------------------------------------------------------------
--- RANDOM_CHAR: produce a random char in a specified string
--- P_STR      : The string to produce a char from
+-- RANDOM_CHAR: pick a random char in a specified string
+-- P_STR      : The string to pick a char from
 -- P_CRYPTO   : Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
--- Generate a random char from a string. See RANDOM_INT for dicussion of randomness.
+-- Pick a random char from a string. See RANDOM_INT for dicussion of randomness.
 -- EG:
 -- P_STR = 'afty': result will be 'a', 'f', 't', or 'y'
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_CHAR(P_STR TEXT, P_CRYPTO BOOLEAN = FALSE) RETURNS TEXT AS
@@ -549,33 +554,44 @@ SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NU
 
 
 ---------------------------------------------------------------------------------------------------
--- RANDOM_SUBSET: produce a random subset of a provided JSON array
+-- RANDOM_SUBSET: produce a random subset of a provided JSONB array
 -- P_ARR   : The JSON array to get a subset of
 -- P_MIN   : The minimum number of elements of the subset
 -- P_MAX   : The maximum number of elements of the subset
 -- P_CRYPTO: Use the PG_CRYPTO gen_random_bytes if true, else RANDOM() if false
--- Generate a random char from a string. See RANDOM_INT for dicussion of randomness.
-CREATE OR REPLACE FUNCTION managed_code.RANDOM_SUBSET(P_ARR JSON, P_MIN INT = 1, P_MAX INT = -1, P_CRYPTO BOOLEAN = FALSE) RETURNS JSON AS
+-- See RANDOM_INT for dicussion of randomness.
+CREATE OR REPLACE FUNCTION managed_code.RANDOM_SUBSET(P_ARR JSONB, P_MIN INT = 1, P_MAX INT = -1, P_CRYPTO BOOLEAN = FALSE) RETURNS JSONB AS
 $$
   WITH ARR_LEN AS (
-    SELECT json_array_length(P_ARR) AS P_LEN
+    SELECT JSONB_ARRAY_LENGTH(P_ARR) AS P_LEN
   )
   , ADJUST_MIN AS (
     SELECT *
-          ,CASE WHEN P_MIN < 1 THEN 1 WHEN P_MIN > P_LEN THEN P_LEN ELSE P_MIN END AS ADJ_MIN
+          ,CASE
+             WHEN P_MIN < 1     THEN 1
+             WHEN P_MIN > P_LEN THEN P_LEN
+             ELSE P_MIN
+           END AS ADJ_MIN
       FROM ARR_LEN
   )
   , ADJUST_MAX AS (
     SELECT *
-          ,CASE WHEN P_MAX < 0 THEN P_LEN WHEN P_MAX < ADJ_MIN THEN ADJ_MIN WHEN P_MAX > P_LEN THEN P_LEN ELSE P_MAX END AS ADJ_MAX
+          ,CASE
+             WHEN P_MAX < 0
+             THEN P_LEN
+             WHEN P_MAX < ADJ_MIN
+             THEN ADJ_MIN
+             WHEN P_MAX > P_LEN THEN P_LEN
+             ELSE P_MAX
+           END AS ADJ_MAX
       FROM ADJUST_MIN
   )
-  SELECT JSON_AGG(e) subset
+  SELECT JSONB_AGG(e) subset
     FROM ADJUST_MAX
         ,(
            SELECT e
                  ,ROW_NUMBER() OVER(ORDER BY RANDOM()) r
-             FROM json_array_elements(P_ARR) e
+             FROM JSONB_ARRAY_ELEMENTS(P_ARR) e
          )
    WHERE r BETWEEN ADJ_MIN AND managed_code.RANDOM_INT(ADJ_MIN, ADJ_MAX, P_CRYPTO);
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
@@ -584,9 +600,9 @@ $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 SELECT managed_Code.TEST(
          'RANDOM_SUBSET must return a subset of a,f,t,y'
         ,(SELECT COUNT(*)
-            FROM (SELECT JSON_ARRAY_ELEMENTS('["a","f","t","y"]'::JSON) #>> '{}'
+            FROM (SELECT JSONB_ARRAY_ELEMENTS('["a","f","t","y"]') #>> '{}'
                   EXCEPT
-                  SELECT JSON_ARRAY_ELEMENTS(managed_code.RANDOM_SUBSET('["a","f","t","y"]'::JSON)) #>> '{}'
+                  SELECT JSONB_ARRAY_ELEMENTS(managed_code.RANDOM_SUBSET('["a","f","t","y"]')) #>> '{}'
                   FROM generate_series(1, 100)
             )
          ) = 0
@@ -614,7 +630,7 @@ $$ LANGUAGE SQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 -- Test TO_8601
 SELECT managed_code.TEST(msg, managed_code.TO_8601(ARG) IS NOT DISTINCT FROM res)
   FROM (VALUES
-          ('TO_9701(NULL) must return NULL'                        , NULL::TIMESTAMP                             , NULL::TEXT)
+          ('TO_9701(NULL) must return NULL'                        , NULL::TIMESTAMP                            , NULL::TEXT)
          ,('TO_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY', TO_CHAR((NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"'))
          ,('TO_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'::TIMESTAMP   , '2025-08-16T02:30:45.235Z')
          ,('TO_8601(2025-08-16T02:30:45.9Z) HAS 900MS'             , '2025-08-16T02:30:45.9Z'::TIMESTAMP        , '2025-08-16T02:30:45.900Z')
@@ -637,10 +653,10 @@ $$ LANGUAGE SQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 -- Test FROM_8601
 SELECT managed_code.TEST(msg, managed_code.FROM_8601(arg) IS NOT DISTINCT FROM res)
   FROM (VALUES
-          ('FROM_8601(NULL) must return NULL'                      , NULL::VARCHAR                                                    , NULL::TIMESTAMP)
-         ,('FROM_8601(NOW - 1 DAY) must return NOW - 1 DAY'        , managed_code.TO_8601(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'), NOW()::TIMESTAMP(3) - INTERVAL '1 DAY')
-         ,('TO_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'                                    , managed_code.FROM_8601('2025-08-16T02:30:45.235Z'))
-         ,('TO_8601(2025-08-16T02:30:45.9Z) has 900MS'             , '2025-08-16T02:30:45.9Z'                                         , managed_code.FROM_8601('2025-08-16T02:30:45.900Z'))
+          ('FROM_8601(NULL) must return NULL'                        , NULL::VARCHAR                                                    , NULL::TIMESTAMP)
+         ,('FROM_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , managed_code.TO_8601(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'), NOW()::TIMESTAMP(3) - INTERVAL '1 DAY')
+         ,('FROM_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'                                    , managed_code.FROM_8601('2025-08-16T02:30:45.235Z'))
+         ,('FROM_8601(2025-08-16T02:30:45.9Z) has 900MS'             , '2025-08-16T02:30:45.9Z'                                         , managed_code.FROM_8601('2025-08-16T02:30:45.900Z'))
        ) AS t(msg, arg, res);
 ----------------------------------------------------------------------------------------------------
 
@@ -799,61 +815,6 @@ SELECT DISTINCT * FROM (
            ,('AzL8n0Y58m7', 9_223_372_036_854_775_807)    
         ) AS t(i, r)
 ) t;
-
-
-
-
----------------------------------------------------------------------------------------------------
--- RAISE_MSG raises an error with the given msg if P_PASS is false
--- Otherwise, it returns P_VAL
--- Allow SQL queries to conditionally throw errors
--- If P_MSG is null or empty, then an error is raised regardless of P_PASS
--- If P_PASS is null, then an error is raised
-CREATE OR REPLACE FUNCTION managed_code.RAISE_MSG(P_MSG TEXT, P_PASS BOOLEAN, P_VAL ANYELEMENT) RETURNS ANYELEMENT AS
-$$
-BEGIN
-  IF LENGTH(COALESCE(P_MSG, '')) = 0 THEN
-    RAISE EXCEPTION 'P_MSG CANNOT BE NULL OR EMPTY';
-  END IF;
-
-  IF P_PASS IS NULL THEN
-    RAISE EXCEPTION 'P_PASS CANNOT BE NULL';
-  END IF;
-
-  IF P_PASS THEN
-    RETURN P_VAL;
-  ELSE
-    RAISE EXCEPTION '%', P_MSG;
-  END IF;
-END;
-$$ LANGUAGE PLPGSQL IMMUTABLE;
-
--- Test P_MSG IS null or empty
-SELECT managed_code.TEST('P_MSG CANNOT BE NULL OR EMPTY', $$SELECT managed_code.RAISE_MSG(NULL, FALSE, ''::TEXT)$$);
-SELECT managed_code.TEST('P_MSG CANNOT BE NULL OR EMPTY', $$SELECT managed_code.RAISE_MSG(''  , FALSE, ''::TEXT)$$);
-
--- Test P_PASS IS null
-SELECT managed_code.TEST('P_PASS CANNOT BE NULL', $$SELECT managed_code.RAISE_MSG('the msg', NULL, ''::TEXT)$$);
-
--- Test RAISE_MSG where P_PASS is false (error raised)
-SELECT managed_code.TEST('the msg', $$SELECT managed_code.RAISE_MSG('the msg', FALSE, ''::TEXT)$$);
-
--- Test RAISE_MSG where P_PASS is true (value returned)
-SELECT managed_code.TEST('val', managed_code.RAISE_MSG('the msg', TRUE, 'val'::TEXT) = 'val');
-
-
-
-
----------------------------------------------------------------------------------------------------
--- RAISE_MSG_IF_EMPTY is an easier test for empty strings
--- Returns P_VAL if it is non-nnull and non-empty, else raises P_MSG
-CREATE OR REPLACE FUNCTION managed_code.RAISE_MSG_IF_EMPTY(P_MSG TEXT, P_VAL TEXT) RETURNS TEXT AS
-$$
-BEGIN
-  RETURN managed_code.RAISE_MSG(P_MSG, LENGTH(COALESCE(P_VAL, '')) > 0, P_VAL);
-END;
-$$ LANGUAGE PLPGSQL IMMUTABLE;
----------------------------------------------------------------------------------------------------
 
 
 

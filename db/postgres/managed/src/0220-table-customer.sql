@@ -6,18 +6,6 @@ CREATE TABLE IF NOT EXISTS managed_tables.address_type(
   ,ord   INTEGER NOT NULL
 ) INHERITS(managed_tables.base);
 
--- Base trigger
-CREATE OR REPLACE TRIGGER address_type_tg_ins
-BEFORE INSERT ON managed_tables.address_type
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
-CREATE OR REPLACE TRIGGER address_type_tg_upd
-BEFORE UPDATE ON managed_tables.address_type
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
 SELECT 'ALTER TABLE managed_tables.address_type ADD CONSTRAINT address_type_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
    SELECT NULL
@@ -62,76 +50,52 @@ CREATE TABLE IF NOT EXISTS managed_tables.address(
   ,mailing_code       TEXT
 ) INHERITS(managed_tables.base);
 
--- Base trigger
-CREATE OR REPLACE TRIGGER address_tg_base_ins
-BEFORE INSERT ON managed_tables.address
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
-CREATE OR REPLACE TRIGGER address_tg_base_upd
-BEFORE UPDATE ON managed_tables.address
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
--- Address trigger function
-CREATE OR REPLACE FUNCTION managed_tables.ADDRESS_TG_FN() RETURNS trigger AS
-$$
-DECLARE
-  V_COUNTRY_NAME             TEXT;
-  V_COUNTRY_HAS_REGIONS      BOOLEAN;
-  V_COUNTRY_HAS_MAILING_CODE BOOLEAN;
-BEGIN
-  -- Does the new country require a region and/or mailing code?
-  SELECT name
-        ,has_regions
-        ,has_mailing_code
-    INTO V_COUNTRY_NAME
-        ,V_COUNTRY_HAS_REGIONS
-        ,V_COUNTRY_HAS_MAILING_CODE
-    FROM managed_tables.country c
-   WHERE c.relid = NEW.country_relid;
-
-  IF V_COUNTRY_HAS_REGIONS THEN
-    -- A region must be provided if the country requires it
-    IF NEW.region_relid IS NULL THEN
-      RAISE EXCEPTION 'The country % requires a region', V_COUNTRY_NAME;
-    -- The region must be part of the country
-    ELSIF (
-      (SELECT COUNT(*)
-        FROM managed_tables.region r
-       WHERE r.country_relid = NEW.country_relid
-         AND r.relid         = NEW.region_relid
-      ) = 0
-    ) THEN
-      RAISE EXCEPTION
-         'The country % does not contain the region %'
-        ,V_COUNTRY_NAME
-        ,(SELECT name FROM managed_tables.region WHERE relid = NEW.region_relid)
-      ;
-    END IF;
-  END IF;
-
-  -- A mailing code must be provided if the country requires it
-  IF V_COUNTRY_HAS_MAILING_CODE AND (NEW.mailing_code IS NULL) THEN
-    RAISE EXCEPTION 'The country % requires a mailing code', V_COUNTRY_NAME;
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE PLPGSQL;
-
--- Address trigger
-CREATE OR REPLACE TRIGGER address_tg_fn_ins
-BEFORE INSERT ON managed_tables.address
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.ADDRESS_TG_FN();
-
-CREATE OR REPLACE TRIGGER address_tg_fn_upd
-BEFORE UPDATE ON managed_tables.address
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.ADDRESS_TG_FN();
+---- Address trigger function
+--CREATE OR REPLACE FUNCTION managed_tables.ADDRESS_TG_FN() RETURNS trigger AS
+--$$
+--DECLARE
+--  V_COUNTRY_NAME             TEXT;
+--  V_COUNTRY_HAS_REGIONS      BOOLEAN;
+--  V_COUNTRY_HAS_MAILING_CODE BOOLEAN;
+--BEGIN
+--  -- Does the new country require a region and/or mailing code?
+--  SELECT name
+--        ,has_regions
+--        ,has_mailing_code
+--    INTO V_COUNTRY_NAME
+--        ,V_COUNTRY_HAS_REGIONS
+--        ,V_COUNTRY_HAS_MAILING_CODE
+--    FROM managed_tables.country c
+--   WHERE c.relid = NEW.country_relid;
+--
+--  IF V_COUNTRY_HAS_REGIONS THEN
+--    -- A region must be provided if the country requires it
+--    IF NEW.region_relid IS NULL THEN
+--      RAISE EXCEPTION 'The country % requires a region', V_COUNTRY_NAME;
+--    -- The region must be part of the country
+--    ELSIF (
+--      (SELECT COUNT(*)
+--        FROM managed_tables.region r
+--       WHERE r.country_relid = NEW.country_relid
+--         AND r.relid         = NEW.region_relid
+--      ) = 0
+--    ) THEN
+--      RAISE EXCEPTION
+--         'The country % does not contain the region %'
+--        ,V_COUNTRY_NAME
+--        ,(SELECT name FROM managed_tables.region WHERE relid = NEW.region_relid)
+--      ;
+--    END IF;
+--  END IF;
+--
+--  -- A mailing code must be provided if the country requires it
+--  IF V_COUNTRY_HAS_MAILING_CODE AND (NEW.mailing_code IS NULL) THEN
+--    RAISE EXCEPTION 'The country % requires a mailing code', V_COUNTRY_NAME;
+--  END IF;
+--
+--  RETURN NEW;
+--END;
+--$$ LANGUAGE PLPGSQL;
 
 SELECT 'ALTER TABLE managed_tables.address ADD CONSTRAINT address_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -183,18 +147,6 @@ CREATE TABLE IF NOT EXISTS managed_tables.customer_person(
   ,last_name     TEXT   NOT NULL
 ) INHERITS(managed_tables.base);
 
--- Base trigger
-CREATE OR REPLACE TRIGGER customer_person_tg_ins
-BEFORE INSERT ON managed_tables.customer_person
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
-CREATE OR REPLACE TRIGGER customer_person_tg_upd
-BEFORE UPDATE ON managed_tables.customer_person
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
 SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_person_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
    SELECT NULL
@@ -240,18 +192,6 @@ SELECT 'ALTER TABLE managed_tables.customer_person ADD CONSTRAINT customer_perso
 CREATE TABLE IF NOT EXISTS managed_tables.customer_business(
    name  TEXT   NOT NULL
 ) INHERITS(managed_tables.base);
-
--- Base trigger
-CREATE OR REPLACE TRIGGER customer_business_tg_ins
-BEFORE INSERT ON managed_tables.customer_business
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
-CREATE OR REPLACE TRIGGER customer_business_tg_upd
-BEFORE UPDATE ON managed_tables.customer_business
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 SELECT 'ALTER TABLE managed_tables.customer_business ADD CONSTRAINT customer_business_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -301,46 +241,46 @@ SELECT 'ALTER TABLE managed_tables.customer_business_address_jt ADD CONSTRAINT c
  )
 \gexec
 
--- Trigger function to ensure that:
--- 1. An address joined to a business has an address type
--- 2. There does not already exist another address joined to the same business with the same address type
-CREATE OR REPLACE FUNCTION managed_tables.CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN() RETURNS trigger AS
-$$
-DECLARE
-    V_ADDRESS_TYPE_RELID BIGINT;
-    V_ADDRESS_TYPE_NAME TEXT;
-BEGIN
-  -- Get address type relid and name
-  SELECT mta.address_type_relid
-        ,mtat.name
-    INTO V_ADDRESS_TYPE_RELID
-        ,V_ADDRESS_TYPE_NAME
-    FROM managed_tables.address mta
-    JOIN managed_tables.address_type mtat
-      ON mtat.relid = mta.address_type_relid
-   WHERE mta.relid = NEW.address_relid;
-
-  -- The related address must have a type
-  IF V_ADDRESS_TYPE_RELID IS NULL THEN
-    RAISE EXCEPTION 'A customer business address must have an address type: business relid = %, address relid = %', NEW.business_relid, NEW.address_relid;
-  END IF;
-
-  -- Check if there already exists a mapping of this business to another address of the same type
-  IF EXISTS (
-    SELECT 1
-      FROM managed_tables.customer_business_address_jt mtcbaj
-     WHERE mtcbaj.business_relid = NEW.business_relid
-       AND mtcbaj.address_relid = NEW.address_relid
-  ) THEN
-    RAISE EXCEPTION 'A customer business cannot have two addresses of the same type: business relid = %, address type = %', NEW.business_relid, V_ADDRESS_TYPE_NAME;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Business address trigger
-CREATE OR REPLACE TRIGGER customer_business_address_jt_tg
-BEFORE INSERT OR UPDATE ON managed_tables.customer_business_address_jt
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN();
+---- Trigger function to ensure that:
+---- 1. An address joined to a business has an address type
+---- 2. There does not already exist another address joined to the same business with the same address type
+--CREATE OR REPLACE FUNCTION managed_tables.CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN() RETURNS trigger AS
+--$$
+--DECLARE
+--    V_ADDRESS_TYPE_RELID BIGINT;
+--    V_ADDRESS_TYPE_NAME TEXT;
+--BEGIN
+--  -- Get address type relid and name
+--  SELECT mta.address_type_relid
+--        ,mtat.name
+--    INTO V_ADDRESS_TYPE_RELID
+--        ,V_ADDRESS_TYPE_NAME
+--    FROM managed_tables.address mta
+--    JOIN managed_tables.address_type mtat
+--      ON mtat.relid = mta.address_type_relid
+--   WHERE mta.relid = NEW.address_relid;
+--
+--  -- The related address must have a type
+--  IF V_ADDRESS_TYPE_RELID IS NULL THEN
+--    RAISE EXCEPTION 'A customer business address must have an address type: business relid = %, address relid = %', NEW.business_relid, NEW.address_relid;
+--  END IF;
+--
+--  -- Check if there already exists a mapping of this business to another address of the same type
+--  IF EXISTS (
+--    SELECT 1
+--      FROM managed_tables.customer_business_address_jt mtcbaj
+--     WHERE mtcbaj.business_relid = NEW.business_relid
+--       AND mtcbaj.address_relid = NEW.address_relid
+--  ) THEN
+--    RAISE EXCEPTION 'A customer business cannot have two addresses of the same type: business relid = %, address type = %', NEW.business_relid, V_ADDRESS_TYPE_NAME;
+--  END IF;
+--
+--  RETURN NEW;
+--END;
+--$$ LANGUAGE plpgsql;
+--
+---- Business address trigger
+--CREATE OR REPLACE TRIGGER customer_business_address_jt_tg
+--BEFORE INSERT OR UPDATE ON managed_tables.customer_business_address_jt
+--FOR EACH ROW
+--EXECUTE FUNCTION managed_tables.CUSTOMER_BUSINESS_ADDRESS_JT_TG_FN();

@@ -12,18 +12,6 @@ CREATE TABLE IF NOT EXISTS managed_tables.country(
   ,ord                 INTEGER NOT NULL
 ) INHERITS (managed_tables.base);
 
--- Base triggers
-CREATE OR REPLACE TRIGGER country_tg_ins
-BEFORE INSERT ON managed_tables.country
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
-CREATE OR REPLACE TRIGGER country_tg_upd
-BEFORE UPDATE ON managed_tables.country
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
 -- Primary key
 SELECT 'ALTER TABLE managed_tables.country ADD CONSTRAINT country_pk PRIMARY KEY(relid)'
  WHERE NOT EXISTS (
@@ -91,18 +79,6 @@ CREATE TABLE IF NOT EXISTS managed_tables.region(
   ,ord           INTEGER NOT NULL
   ,active        BOOLEAN DEFAULT TRUE
 ) INHERITS(managed_tables.base);
-
--- Base trigger
-CREATE OR REPLACE TRIGGER region_tg_ins
-BEFORE INSERT ON managed_tables.region
-FOR EACH ROW
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
-
-CREATE OR REPLACE TRIGGER region_tg_upd
-BEFORE UPDATE ON managed_tables.region
-FOR EACH ROW
-WHEN (OLD IS DISTINCT FROM NEW)
-EXECUTE FUNCTION managed_tables.BASE_TG_FN();
 
 -- Primary key
 SELECT 'ALTER TABLE managed_tables.region ADD CONSTRAINT region_pk PRIMARY KEY(relid)'

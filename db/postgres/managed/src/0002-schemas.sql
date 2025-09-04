@@ -1,9 +1,6 @@
 -- Revoke public access to create objects on public schema
 REVOKE CREATE ON SCHEMA public FROM public;
 
--- Limit schema search opath to public only
-ALTER DATABASE pg_managed SET SEARCH_PATH TO public;
-
 -- Create tables schema
 CREATE SCHEMA IF NOT EXISTS managed_tables;
 
@@ -26,3 +23,6 @@ $$
 -- See https://www.postgresql.org/docs/current/sql-dropschema.html.
 DROP SCHEMA IF EXISTS managed_code CASCADE;
 CREATE SCHEMA IF NOT EXISTS managed_code;
+
+-- Limit schema search path to maanaged_code first, then public, ensuring public cannot effectively override managed_code
+ALTER DATABASE pg_managed SET SEARCH_PATH TO managed_code, public;
