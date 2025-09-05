@@ -15,7 +15,7 @@ $$
     ),
     COUNTRY_JSON AS (
       SELECT JSONB_BUILD_OBJECT(
-                'id'                ,managed_code.RELID_TO_ID(c.relid)
+                'id'                ,RELID_TO_ID(c.relid)
                ,'version'           ,c.version
                ,'created'           ,c.created
                ,'modified'          ,c.modified
@@ -29,7 +29,7 @@ $$
                ,'regions'           ,(SELECT COALESCE(
                                                JSONB_AGG(
                                                  JSONB_BUILD_OBJECT(
-                                                   'id'       , managed_code.RELID_TO_ID(r.relid)
+                                                   'id'       , RELID_TO_ID(r.relid)
                                                   ,'version'  , r.version
                                                   ,'created'  , r.created
                                                   ,'modified' , r.modified

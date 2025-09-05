@@ -82,7 +82,7 @@ DECLARE
 BEGIN
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST(NULL, NULL::BOOLEAN); -- Cast NULL to boolean to force postgres into using boolean overload
+    SELECT TEST(NULL, NULL::BOOLEAN); -- Cast NULL to boolean to force postgres into using boolean overload
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -97,7 +97,7 @@ BEGIN
 
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('', NULL::BOOLEAN);
+    SELECT TEST('', NULL::BOOLEAN);
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -112,7 +112,7 @@ BEGIN
 
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('TEST', NULL::BOOLEAN);
+    SELECT TEST('TEST', NULL::BOOLEAN);
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -127,7 +127,7 @@ BEGIN
   
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('TEST', FALSE);
+    SELECT TEST('TEST', FALSE);
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -141,7 +141,7 @@ BEGIN
   END IF;
   
   BEGIN
-    IF NOT managed_code.TEST('TEST', TRUE) THEN
+    IF NOT TEST('TEST', TRUE) THEN
       RAISE EXCEPTION 'managed_code.TEST must succeed when P_TEST is true';
     END IF;
   EXCEPTION
@@ -162,7 +162,7 @@ BEGIN
   -- P_ERR cannot be null
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST(NULL, NULL::TEXT); -- Cast NULL to text to force postgres into using text overload
+    SELECT TEST(NULL, NULL::TEXT); -- Cast NULL to text to force postgres into using text overload
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -178,7 +178,7 @@ BEGIN
   -- P_ERR cannot be empty
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('', NULL::TEXT);
+    SELECT TEST('', NULL::TEXT);
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -194,7 +194,7 @@ BEGIN
   -- P_QUERY cannot be null
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('ERR', NULL::TEXT);
+    SELECT TEST('ERR', NULL::TEXT);
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -210,7 +210,7 @@ BEGIN
   -- P_QUERY cannot be empty
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('ERR', '');
+    SELECT TEST('ERR', '');
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -225,7 +225,7 @@ BEGIN
 
   -- Test error calling COALESCE(), where the error message provided IS correct
   BEGIN
-    SELECT managed_code.TEST('syntax error at or near ")"', 'SELECT COALESCE()') INTO V_RES;
+    SELECT TEST('syntax error at or near ")"', 'SELECT COALESCE()') INTO V_RES;
   EXCEPTION
     WHEN OTHERS THEN
       GET STACKED DIAGNOSTICS V_MSG = MESSAGE_TEXT;
@@ -235,7 +235,7 @@ BEGIN
   -- Test error calling COALESCE(), where the error message provided IS NOT correct
   BEGIN
     V_DIED := TRUE;
-    SELECT managed_code.TEST('wrong error message', 'SELECT COALESCE()') INTO V_RES;
+    SELECT TEST('wrong error message', 'SELECT COALESCE()') INTO V_RES;
     V_DIED := FALSE;
   EXCEPTION
     WHEN OTHERS THEN
@@ -277,9 +277,9 @@ $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 -- Test IIF
 SELECT *
   FROM (
-    SELECT managed_code.TEST(
+    SELECT TEST(
              format('managed_code.IIF(%s, %s, %s) must return %s', expr, tval, fval, res)
-            ,managed_code.IIF(expr, tval, fval) IS NOT DISTINCT FROM res
+            ,IIF(expr, tval, fval) IS NOT DISTINCT FROM res
            )
       FROM (VALUES
               (NULL , 'a' , 'b' , NULL)
@@ -317,7 +317,7 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test NEMPTY_WS
-SELECT managed_code.TEST(msg, managed_code.NEMPTY_WS('-', VARIADIC args) IS NOT DISTINCT FROM res) nempty_ws
+SELECT TEST(msg, NEMPTY_WS('-', VARIADIC args) IS NOT DISTINCT FROM res) nempty_ws
   FROM (VALUES
           ('NEMPTY_WS must return NULL'   , ARRAY[                                             ]::TEXT[], NULL     )
          ,('NEMPTY_WS must return NULL'   , ARRAY[NULL                                         ]::TEXT[], NULL     )
@@ -373,147 +373,147 @@ $$
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- Test RANDOM_INT()
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT() returns an int'
-        ,managed_code.RANDOM_INT() IS NOT NULL
+        ,RANDOM_INT() IS NOT NULL
        );
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT() returns an int'
-        ,managed_code.RANDOM_INT(P_CRYPTO => TRUE) IS NOT NULL
+        ,RANDOM_INT(P_CRYPTO => TRUE) IS NOT NULL
        );
 
 -- Test RANDOM_INT(50)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(50) returns an int >= 50'
-        ,managed_code.RANDOM_INT(50) >= 50
+        ,RANDOM_INT(50) >= 50
        )
-  FROM generate_series(1, 10);
+  FROM GENERATE_SERIES(1, 10);
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(50) returns an int >= 50'
-        ,managed_code.RANDOM_INT(P_MIN => 50, P_CRYPTO => TRUE) >= 50
+        ,RANDOM_INT(P_MIN => 50, P_CRYPTO => TRUE) >= 50
        )
-  FROM generate_series(1, 10);
+  FROM GENERATE_SERIES(1, 10);
 
 -- 1. Test RANDOM_INT(5, 20)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(5, 20) must return range of [5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(5, 20)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(5, 20)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 SELECT managed_code.TEST(
          'RANDOM_INT(5, 20) must return range of [5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(5, 20, TRUE)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(5, 20, TRUE)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 2. Test RANDOM_INT(20, 5)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(20, 5) must return range of [5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(20, 5)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(20, 5)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(20, 5) must return range of [5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(20, 5, TRUE)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(20, 5, TRUE)) = '{5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 3. Test RANDOM_INT(-5, 20)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-5, 20) must return range of [-5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-5, 20)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-5, 20)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-5, 20) must return range of [-5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-5, 20, TRUE)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-5, 20, TRUE)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 4. Test RANDOM_INT(20, -5)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(20, -5) must return range of [-5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(20, -5)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(20, -5)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(20, -5) must return range of [-5, 20]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(20, -5, TRUE)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(20, -5, TRUE)) = '{-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 5. Test RANDOM_INT(-20, 5)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-20, 5) must return range of [-20, 5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-20, 5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-20, 5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-20, 5) must return range of [-20, 5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-20, 5, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-20, 5, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 6. Test RANDOM_INT(5, -20)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(5, -20) must return range of [-20, 5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(5, -20) must return range of [-20, 5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(5, -20, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(5, -20, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 7. Test RANDOM_INT(-20, -5)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-20, -5) must return range of [-20, -5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-20, -5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-20, -5)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-20, -5) must return range of [-20, -5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-20, -5, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-20, -5, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
 -- 8. Test RANDOM_INT(-5, -20)
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-5, -20) must return range of [-20, -5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-5, -20)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 
-SELECT managed_code.TEST(
+SELECT TEST(
          'RANDOM_INT(-5, -20) must return range of [-20, -5]'
-        ,ARRAY_AGG(DISTINCT managed_code.RANDOM_INT(-5, -20, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
+        ,ARRAY_AGG(DISTINCT RANDOM_INT(-5, -20, TRUE)) = '{-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5}'
        )
-  FROM generate_series(1, 1_000)
+  FROM GENERATE_SERIES(1, 1_000)
  ORDER BY 1;
 ---------------------------------------------------------------------------------------------------
 
@@ -529,25 +529,25 @@ SELECT managed_code.TEST(
 -- P_STR = 'afty': result will be 'a', 'f', 't', or 'y'
 CREATE OR REPLACE FUNCTION managed_code.RANDOM_CHAR(P_STR TEXT, P_CRYPTO BOOLEAN = FALSE) RETURNS TEXT AS
 $$
-  SELECT SUBSTRING(P_STR FROM managed_code.RANDOM_INT(1, LENGTH(P_STR), P_CRYPTO) FOR 1);
+  SELECT SUBSTRING(P_STR FROM RANDOM_INT(1, LENGTH(P_STR), P_CRYPTO) FOR 1);
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- Test RANDOM_CHAR('afty')
-SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', managed_code.RANDOM_CHAR('afty') IN ('a', 'f', 't', 'y'))
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', RANDOM_CHAR('afty') IN ('a', 'f', 't', 'y'))
   FROM GENERATE_SERIES(1, 100);
 
 -- Test RANDOM_CHAR('afty') using crypto
-SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', managed_code.RANDOM_CHAR('afty', TRUE) IN ('a', 'f', 't', 'y'))
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', RANDOM_CHAR('afty', TRUE) IN ('a', 'f', 't', 'y'))
   FROM GENERATE_SERIES(1, 100);
 
 -- Test RANDOM_CHAR('a')
-SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(''a'') must return a', managed_code.RANDOM_CHAR('a') ='a');
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''a'') must return a', RANDOM_CHAR('a') ='a');
 
 -- Test RANDOM_CHAR('')
-SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR('''') must return ''''', managed_code.RANDOM_CHAR('') = '');
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR('''') must return ''''', RANDOM_CHAR('') = '');
 
 -- Test RANDOM_CHAR(NULL)
-SELECT DISTINCT managed_code.TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', managed_code.RANDOM_CHAR(NULL) IS NULL);
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', RANDOM_CHAR(NULL) IS NULL);
 ---------------------------------------------------------------------------------------------------
 
 
@@ -593,17 +593,17 @@ $$
                  ,ROW_NUMBER() OVER(ORDER BY RANDOM()) r
              FROM JSONB_ARRAY_ELEMENTS(P_ARR) e
          )
-   WHERE r BETWEEN ADJ_MIN AND managed_code.RANDOM_INT(ADJ_MIN, ADJ_MAX, P_CRYPTO);
+   WHERE r BETWEEN ADJ_MIN AND RANDOM_INT(ADJ_MIN, ADJ_MAX, P_CRYPTO);
 $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 
 -- Test RANDOM_SUBSET('a', 'f', 't', 'y')
-SELECT managed_Code.TEST(
+SELECT TEST(
          'RANDOM_SUBSET must return a subset of a,f,t,y'
         ,(SELECT COUNT(*)
             FROM (SELECT JSONB_ARRAY_ELEMENTS('["a","f","t","y"]') #>> '{}'
                   EXCEPT
-                  SELECT JSONB_ARRAY_ELEMENTS(managed_code.RANDOM_SUBSET('["a","f","t","y"]')) #>> '{}'
-                  FROM generate_series(1, 100)
+                  SELECT JSONB_ARRAY_ELEMENTS(RANDOM_SUBSET('["a","f","t","y"]')) #>> '{}'
+                  FROM GENERATE_SERIES(1, 100)
             )
          ) = 0
        );
@@ -628,7 +628,7 @@ $$ LANGUAGE SQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 
 
 -- Test TO_8601
-SELECT managed_code.TEST(msg, managed_code.TO_8601(ARG) IS NOT DISTINCT FROM res)
+SELECT TEST(msg, TO_8601(ARG) IS NOT DISTINCT FROM res)
   FROM (VALUES
           ('TO_9701(NULL) must return NULL'                        , NULL::TIMESTAMP                            , NULL::TEXT)
          ,('TO_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY', TO_CHAR((NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"'))
@@ -651,12 +651,12 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 
 -- Test FROM_8601
-SELECT managed_code.TEST(msg, managed_code.FROM_8601(arg) IS NOT DISTINCT FROM res)
+SELECT TEST(msg, FROM_8601(arg) IS NOT DISTINCT FROM res)
   FROM (VALUES
           ('FROM_8601(NULL) must return NULL'                        , NULL::VARCHAR                                                    , NULL::TIMESTAMP)
-         ,('FROM_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , managed_code.TO_8601(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'), NOW()::TIMESTAMP(3) - INTERVAL '1 DAY')
-         ,('FROM_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'                                    , managed_code.FROM_8601('2025-08-16T02:30:45.235Z'))
-         ,('FROM_8601(2025-08-16T02:30:45.9Z) has 900MS'             , '2025-08-16T02:30:45.9Z'                                         , managed_code.FROM_8601('2025-08-16T02:30:45.900Z'))
+         ,('FROM_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , TO_8601(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'), NOW()::TIMESTAMP(3) - INTERVAL '1 DAY')
+         ,('FROM_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'                                    , FROM_8601('2025-08-16T02:30:45.235Z'))
+         ,('FROM_8601(2025-08-16T02:30:45.9Z) has 900MS'             , '2025-08-16T02:30:45.9Z'                                         , FROM_8601('2025-08-16T02:30:45.900Z'))
        ) AS t(msg, arg, res);
 ----------------------------------------------------------------------------------------------------
 
@@ -701,13 +701,13 @@ $$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 
 --- Test RELID_TO_ID
 SELECT DISTINCT * FROM (
-  SELECT managed_code.TEST('P_RELID cannot be < 1', q)
+  SELECT TEST('P_RELID cannot be < 1', q)
     FROM (VALUES
             ('SELECT managed_code.RELID_TO_ID(0)'   )
            ,('SELECT managed_code.RELID_TO_ID(-1)'  )
          ) AS t(q)
    UNION ALL
-  SELECT managed_code.TEST(format('RELID_TO_ID(%s) must return %s', r, i), managed_code.RELID_TO_ID(r) IS NOT DISTINCT FROM i)
+  SELECT TEST(format('RELID_TO_ID(%s) must return %s', r, i), RELID_TO_ID(r) IS NOT DISTINCT FROM i)
     FROM (VALUES
            (NULL                     , NULL         ),
            (1                        , '1'          ),
@@ -788,7 +788,7 @@ $$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
 
 --- Test ID_TO_RELID
 SELECT DISTINCT * FROM (
-  SELECT managed_code.TEST(msg, q)
+  SELECT TEST(msg, q)
     FROM (VALUES
             ('P_ID cannot be empty', 'SELECT managed_code.ID_TO_RELID('''')')
 
@@ -801,7 +801,7 @@ SELECT DISTINCT * FROM (
            ,('P_ID digit ''{'' (ASCII 0x7B) is invalid: only characters in the ranges of 0..9, A..Z, and a..z are valid', 'SELECT managed_code.ID_TO_RELID(''111{'')')
          ) AS t(msg, q)
    UNION ALL
-  SELECT managed_code.TEST(format('ID_TO_RELID must return %s', r), managed_code.ID_TO_RELID(i) IS NOT DISTINCT FROM r)
+  SELECT TEST(format('ID_TO_RELID must return %s', r), ID_TO_RELID(i) IS NOT DISTINCT FROM r)
     FROM (VALUES
             (NULL         , NULL                     )
            ,('1'          , 1                        )
@@ -839,8 +839,8 @@ $$
 --  SELECT * FROM GET_TYP;
 
  ,OBJ_ARR AS (
-    SELECT managed_code.IIF(jsonb_typ = 'object', P_VAL, NULL) jsonb_obj
-          ,managed_code.IIF(jsonb_typ = 'array' , P_VAL, NULL) jsonb_arr
+    SELECT IIF(jsonb_typ = 'object', P_VAL, NULL) jsonb_obj
+          ,IIF(jsonb_typ = 'array' , P_VAL, NULL) jsonb_arr
       FROM GET_TYP
   )
   SELECT jsonb_obj AS elem
@@ -856,45 +856,45 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test GET_JSONB_OBJ_ARR(object) returns one row with the object
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns one row for object'
- ,managed_code.GET_JSONB_OBJ_ARR('{"a":"b","c":"d"}') = '{"a":"b","c":"d"}'
+ ,GET_JSONB_OBJ_ARR('{"a":"b","c":"d"}') = '{"a":"b","c":"d"}'
 );
 
 -- Test GET_JSONB_OBJ_ARR(array of one object) returns one row
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns one row for array of one object'
- ,managed_code.GET_JSONB_OBJ_ARR('[{"a":"b","c":"d"}]') = '{"a":"b","c":"d"}'
+ ,GET_JSONB_OBJ_ARR('[{"a":"b","c":"d"}]') = '{"a":"b","c":"d"}'
 );
 
 -- Test GET_JSONB_OBJ_ARR(array of two objects) returns two rows
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns two rows for array of two objects'
- ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('[{"a":"b"},{"c":"d"}]')) = 2
+ ,(SELECT COUNT(*) FROM GET_JSONB_OBJ_ARR('[{"a":"b"},{"c":"d"}]')) = 2
 );
 
 -- Test GET_JSONB_OBJ_ARR(array of two objects aand 1 number) returns two rows
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns two rows for array of two objects'
- ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('[{"a":"b"},1,{"c":"d"}]')) = 2
+ ,(SELECT COUNT(*) FROM GET_JSONB_OBJ_ARR('[{"a":"b"},1,{"c":"d"}]')) = 2
 );
 
 -- Test GET_JSONB_OBJ_ARR(NULL) returns no rows
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns empty set for NULL'
- ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR(NULL)) = 0
+ ,(SELECT COUNT(*) FROM GET_JSONB_OBJ_ARR(NULL)) = 0
 );
 
 -- Test GET_JSONB_OBJ_ARR(number) returns no rows
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns empty set for a number'
- ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('1')) = 0
+ ,(SELECT COUNT(*) FROM GET_JSONB_OBJ_ARR('1')) = 0
 );
 
 -- Test GET_JSONB_OBJ_ARR([number]) returns no rows
-SELECT managed_code.TEST(
+SELECT TEST(
   'Returns empty set for an array of one number'
- ,(SELECT COUNT(*) FROM managed_code.GET_JSONB_OBJ_ARR('[1]')) = 0
+ ,(SELECT COUNT(*) FROM GET_JSONB_OBJ_ARR('[1]')) = 0
 );
 
 
@@ -954,8 +954,8 @@ $$
   -- If not, convert them to empty objects to make further CTEs easier
   WITH
   PARAMS_WITH_TYPES AS (
-    SELECT managed_code.IIF(P_OBJ_TYPE    = 'object', P_OBJ   , '{}') AS P_OBJ
-          ,managed_code.IIF(P_SCHEMA_TYPE = 'object', P_SCHEMA, '{}') AS P_SCHEMA
+    SELECT IIF(P_OBJ_TYPE    = 'object', P_OBJ   , '{}') AS P_OBJ
+          ,IIF(P_SCHEMA_TYPE = 'object', P_SCHEMA, '{}') AS P_SCHEMA
           ,P_OBJ_TYPE
           ,P_SCHEMA_TYPE
       FROM (
@@ -1096,7 +1096,7 @@ $$
   --   - Object has keys with incorrect type of values
   --   - Object is missing required keys
 
-  SELECT managed_code.IIF(
+  SELECT IIF(
            PARAM_ERRORS != '{}'::JSONB
           ,PARAM_ERRORS
           ,SCHEMA_ERRORS || MISSING_ERRORS
@@ -1107,3 +1107,4 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test VALIDATE_JSONB_SCHEMA(NULL P_OBJ) returns {"P_OBJ" :"cannot be null"}
+--SELECT TEST()
