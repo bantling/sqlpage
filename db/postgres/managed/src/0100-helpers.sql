@@ -934,7 +934,7 @@ SELECT TEST(
 -- If there are no parameter errors, and the object does not match the schema, the following errors can be returned:
 -- {"keyName": "Expected X, not Y"}        (eg, {"firstName" : "Expected string, not boolean"})
 -- {"keyName": "Expected datetime, not X"} (eg, {"created"   : "Expected datetime, not Bob"})
--- {"keyName": "Invalid date, not X"}      (eg, {"birthDate" : "Expected date, not Bob"})
+-- {"keyName": "expected date, not X"}      (eg, {"birthDate" : "Expected date, not Bob"})
 -- {"keyName": "Required"}                 (eg, {"firstName" : "Required"}, indicating a missing key that is required)
 -- {"keyName": "Unexpected"}               (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part
 --   of the schema)
@@ -1107,4 +1107,17 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test VALIDATE_JSONB_SCHEMA(NULL P_OBJ) returns {"P_OBJ" :"cannot be null"}
---SELECT TEST()
+SELECT TEST(ERROR_MSG, VALIDATE_JSONB_SCHEMA(P_OBJ::JSONB, P_SCHEMA::JSONB, P_REQD::TEXT[]) = RES::JSONB)
+  FROM (VALUES
+          ('P_OBJ cannot be null'      , NULL                     , '{"firstName": "string"}', NULL, '{"P_OBJ"   : "must be an object"}' )
+         ,('P_SCHEMA cannot be null'   , '{"firstName": "string"}', NULL                     , NULL, '{"P_SCHEMA": "must be an object"}' )
+         ,('P_OBJ must be an object'   , '1'                      , '{"firstName": "string"}', NULL, '{"P_OBJ"   : "must be an object"}' )
+         ,('P_SCHEMA must be an object', '{"firstName": "string"}', '1'                      , NULL, '{"P_SCHEMA": "must be an object"}' )
+         ,('P_OBJ cannot be empty'     , '{}'                     , '{"firstName": "string"}', NULL, '{"P_OBJ"   : "must have at least one key"}')
+         ,('P_SCHEMA cannot be empty'  , '{"firstName": "string"}', '{}'                     , NULL, '{"P_SCHEMA": "must have at least one key"}')
+         ,('firstName expected string, not number'  , '{"firstName": 1}', '{"firstName": "string"}', NULL, '{"firstName": "Expected string, not number"}')
+         ,('created expected datetime, not bob'  , '{"created": "Bob"}', '{"created": "datetime"}', NULL, '{"created": "Expected datetime, not Bob"}')
+         ,('birthDate expected date, not alice'  , '{"birthDate": "Alice"}', '{"birthDate": "date"}', NULL, '{"birthDate": "Expected date, not Alice"}')
+         ,('firstName required'  , '{"firstName": null}', '{"firstName": "string"}', ARRAY['firstName'], '{"firstName": "Required"}')
+         ,('furstName not expected'  , '{"furstName": "Bob"}', '{"firstName": "string"}', NULL, '{"furstName": "Unexpected"}')
+       ) AS t(ERROR_MSG, P_OBJ, P_SCHEMA, P_REQD, RES);
