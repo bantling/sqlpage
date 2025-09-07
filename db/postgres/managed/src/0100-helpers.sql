@@ -1,36 +1,59 @@
 -- Helper functions that could be used in table definitions, views, or code
 
 ---------------------------------------------------------------------------------------------------
--- TEST(TEXT, BOOLEAN): test that a condition succeeded for cases where no exception is raised
---   P_MSG : string exception message if the test failed (cannot be null or empty)
+-- VALIDATE(TEXT, BOOLEAN): test that a condition succeeded for cases where evaluating the condition
+--                      does not raise an exception
+--   P_MSG : string error message if the test failed (cannot be null or empty)
 --   P_TEST: true if test succeeded, null or false if it failed
 -- 
--- Returns true if the condition is true, else it raises an exception with the given error message
--- It is a function so it can be used in select, making it easy and useful for unit tests
+-- Returns a table of (msg,  boolean) containing one of the following three cases:
+-- If P_MSG is null or empty : 'P_MSG cannot be null or empty', FALSE
+-- If P_TEST is null or false: P_MSG                          , FALSE
+-- If P_TEST is true         : NULL                           , TRUE
+--
+-- This function is written in SQL to be efficient in runtime SQL SELECT statements
+CREATE TYPE managed_code.VALIDATE_TYPE AS (MSG TEXT, PASSED BOOLEAN);
+
+CREATE OR REPLACE FUNCTION managed_code.VALIDATE(P_MSG TEXT, P_TEST BOOLEAN) RETURNS managed_code.VALIDATE_TYPE AS
+$$
+  SELECT 'P_MSG cannot be null or empty', FALSE
+   WHERE LENGTH(COALESCE(P_MSG, '')) = 0
+   UNION ALL
+  SELECT P_MSG, FALSE
+   WHERE P_TEST IS DISTINCT FROM TRUE
+   UNION ALL
+  SELECT NULL, TRUE;
+$$ LANGUAGE SQL IMMUTABLE LEAKPROOF;
+
+-- TEST(TEXT, BOOLEAN): test that a condiition succeeded where evaluating the condition will not raise an exception
+-- This function simply calls VALIDATE(TEXT, BOOLEAN), and raises an exception if the boolean column is false.
 CREATE OR REPLACE FUNCTION managed_code.TEST(P_MSG TEXT, P_TEST BOOLEAN) RETURNS BOOLEAN AS
 $$
+DECLARE
+  MSG TEXT;
+  PASSED BOOLEAN;
 BEGIN
-  CASE
-    WHEN LENGTH(COALESCE(P_MSG, '')) = 0 THEN
-      RAISE EXCEPTION 'P_MSG cannot be null or empty';
+  SELECT * INTO MSG, PASSED FROM VALIDATE(P_MSG, P_TEST);
 
-    WHEN P_TEST IS DISTINCT FROM TRUE THEN
-      RAISE EXCEPTION '%', P_MSG;
+  IF NOT PASSED THEN
+    RAISE EXCEPTION '%', MSG;
+  END IF;
 
-    ELSE
-      RETURN TRUE;
-  END CASE;
+  RETURN TRUE;
 END;
 $$ LANGUAGE PLPGSQL IMMUTABLE;
 
--- TEST(TEXT, TEXT): test a function for a case that raises an exception
+-- TEST(TEXT, TEXT): test that a condition succeeded for cases where evaluating the condition may raise an exception
 --   P_ERR   : expected exception text (cannot be null or empty)
---   P_QUERY : string query to execute (cannot be null or empty)
+--   P_QUERY : query text to execute   (cannot be null or empty)
 --
 -- Returns true if executing P_QUERY raises an exception with message P_ERR
 -- It is a function so it can be used in select, making it easy and useful for unit tests
 -- If the query does not fail, or fails with a different exception message, then
 -- an exception is raised with P_ERR and P_QUERY in the text
+--
+-- This function cannot be written in SQL, it is intended only for internal usage, to test
+-- that other PLPGSQL functions that raise an exception are working correctly.
 CREATE OR REPLACE FUNCTION managed_code.TEST(P_ERR TEXT, P_QUERY TEXT) RETURNS BOOLEAN AS
 $$
 DECLARE
@@ -119,12 +142,12 @@ BEGIN
       GET STACKED DIAGNOSTICS V_MSG = MESSAGE_TEXT;
       IF NOT V_MSG = 'TEST' THEN
         RAISE EXCEPTION 'managed_code.TEST must die with P_MSG when P_TEST is null';
-      END IF;  
+      END IF;
   END;
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_TEST is null';
   END IF;
-  
+
   BEGIN
     V_DIED := TRUE;
     SELECT TEST('TEST', FALSE);
@@ -134,12 +157,12 @@ BEGIN
       GET STACKED DIAGNOSTICS V_MSG = MESSAGE_TEXT;
       IF NOT V_MSG = 'TEST' THEN
         RAISE EXCEPTION 'managed_code.TEST must die with P_MSG when P_TEST is false';
-      END IF;  
+      END IF;
   END;
   IF NOT V_DIED THEN
     RAISE EXCEPTION 'managed_code.TEST must die when P_TEST is false';
   END IF;
-  
+
   BEGIN
     IF NOT TEST('TEST', TRUE) THEN
       RAISE EXCEPTION 'managed_code.TEST must succeed when P_TEST is true';
@@ -942,17 +965,16 @@ SELECT TEST(
 CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
 $$
   -- Hard-coded data for debugging
---  WITH PARAMS AS (
+  WITH ADJ_PARAMS AS (
+    SELECT P_OBJ, P_SCHEMA, P_REQD
 --    SELECT '{"firstName": "Avery", "today": "2025-08-31"}'::JSONB AS P_OBJ
---          ,'{"firstName": "string", "today": "date"}'::JSONB AS P_SCHEMA
---          ,ARRAY['firstName', 'today']::TEXT[]                                       AS P_REQD
---  )
---  SELECT * FROM PARAMS;
---  ,
+--          ,'{"firstName": "string", "today": "date"}'::JSONB      AS P_SCHEMA
+--          ,ARRAY['firstName', 'today']::TEXT[]                    AS P_REQD
+  ),
+--  SELECT * FROM ADJ_PARAMS;
 
   -- Check if the P_OBJ and P_SCHEMA parameters are JSONB objects
   -- If not, convert them to empty objects to make further CTEs easier
-  WITH
   PARAMS_WITH_TYPES AS (
     SELECT IIF(P_OBJ_TYPE    = 'object', P_OBJ   , '{}') AS P_OBJ
           ,IIF(P_SCHEMA_TYPE = 'object', P_SCHEMA, '{}') AS P_SCHEMA
@@ -960,10 +982,10 @@ $$
           ,P_SCHEMA_TYPE
       FROM (
               SELECT
---                    *,
+                     *,
                      COALESCE(JSONB_TYPEOF(P_OBJ)   , 'null') AS P_OBJ_TYPE
                     ,COALESCE(JSONB_TYPEOF(P_SCHEMA), 'null') AS P_SCHEMA_TYPE
---                FROM PARAMS
+                FROM ADJ_PARAMS
            ) t
   )
 --  SELECT * FROM PARAMS_WITH_TYPES;
@@ -1043,7 +1065,7 @@ $$
                     AND skv.SCHEMA_VALUE_TYPE != okv.OBJ_VALUE_TYPE
                    THEN format(
                           'Expected %s, not %s'
-                          ,SCHEMA_VALUE_TYPE
+                          ,skv.SCHEMA_VALUE_TYPE
                           ,okv.OBJ_VALUE_TYPE
                         )
 
@@ -1067,8 +1089,7 @@ $$
  ,SCHEMA_REQUIRED AS (
     SELECT UNNEST AS REQD_KEY
       FROM UNNEST(
-             P_REQD
---             (SELECT P_REQD FROM PARAMS)
+             (SELECT P_REQD FROM ADJ_PARAMS)
            )
   )
 --  SELECT * FROM SCHEMA_REQUIRED;
