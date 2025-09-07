@@ -6,37 +6,72 @@
 --   P_MSG : string error message if the test failed (cannot be null or empty)
 --   P_TEST: true if test succeeded, null or false if it failed
 -- 
--- Returns a table of (msg,  boolean) containing one of the following three cases:
--- If P_MSG is null or empty : 'P_MSG cannot be null or empty', FALSE
--- If P_TEST is null or false: P_MSG                          , FALSE
--- If P_TEST is true         : NULL                           , TRUE
+-- Returns a JSONB object of {"msg": "error message" | null, "passed": true | false).
+-- There are 3 cases:
+-- If P_MSG is null or empty : {"msg": "P_MSG cannot be null or empty", "passed": false}
+-- If P_TEST is null or false: {"msg": "<value of P_MSG>"             , "passed": false}
+-- If P_TEST is true         : {"passed": true}
 --
 -- This function is written in SQL to be efficient in runtime SQL SELECT statements
-CREATE TYPE managed_code.VALIDATE_TYPE AS (MSG TEXT, PASSED BOOLEAN);
-
-CREATE OR REPLACE FUNCTION managed_code.VALIDATE(P_MSG TEXT, P_TEST BOOLEAN) RETURNS managed_code.VALIDATE_TYPE AS
+CREATE OR REPLACE FUNCTION managed_code.VALIDATE(P_MSG TEXT, P_TEST BOOLEAN) RETURNS JSONB AS
 $$
-  SELECT 'P_MSG cannot be null or empty', FALSE
-   WHERE LENGTH(COALESCE(P_MSG, '')) = 0
-   UNION ALL
-  SELECT P_MSG, FALSE
-   WHERE P_TEST IS DISTINCT FROM TRUE
-   UNION ALL
-  SELECT NULL, TRUE;
+  SELECT CASE
+           WHEN LENGTH(COALESCE(P_MSG, '')) = 0
+           THEN '{"msg": "P_MSG cannot be null or empty", "passed": false}'
+           WHEN P_TEST IS DISTINCT FROM TRUE
+           THEN JSONB_BUILD_OBJECT('msg', P_MSG, 'passed', false)
+           ELSE '{"passed": true}'
+         END;
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF;
 
+-- Test validate
+DO $$
+DECLARE
+  VALIDATE_RESP JSONB;
+  MESSAGE TEXT;
+BEGIN
+  -- Test that VALIDATE(NULL, NULL) returns {"msg": "P_MSG cannot be null or empty", "passed"; "false"}
+  IF VALIDATE(NULL, NULL) != '{"msg": "P_MSG cannot be null or empty", "passed": false}' THEN
+    RAISE EXCEPTION '%', 'VALIDATE(NULL, NULL) MUST RETURN {"msg": "P_MSG cannot be null or empty", "passed": "false"}';
+  END IF;
+
+  -- Test that VALIDATE('', NULL) returns {"msg": "P_MSG cannot be null or empty", "passed"; "false"}
+  IF VALIDATE('', NULL) != '{"msg": "P_MSG cannot be null or empty", "passed": false}' THEN
+    RAISE EXCEPTION '%', 'VALIDATE(''{}'', NULL) MUST RETURN {"msg": "P_MSG cannot be null or empty", "passed": "false"}';
+  END IF;
+
+  -- Test that VALIDATE('dude', NULL) returns {"msg": "dude", "passed": false}
+  IF VALIDATE('dude', NULL) != '{"msg": "dude", "passed": false}' THEN
+    RAISE EXCEPTION '%', 'VALIDATE(''dude'', NULL) MUST RETURN {"msg": "dude", "passed": "false"}';
+  END IF;
+
+  -- Test that VALIDATE('dude', FALSE) returns {"msg": "dude", "passed": false}
+  IF VALIDATE('dude', FALSE) != '{"msg": "dude", "passed": false}' THEN
+    RAISE EXCEPTION '%', 'VALIDATE(''dude'', NULL) MUST RETURN {"msg": "dude", "passed": "false"}';
+  END IF;
+
+  -- Test that VALIDATE('dude', TRUE) returns {"passed": true}
+  IF VALIDATE('dude', TRUE) != '{"passed": true}' THEN
+    RAISE EXCEPTION '%', 'VALIDATE(''dude'', NULL) MUST RETURN {"msg": "dude", "passed": "false"}';
+  END IF;
+END
+$$ LANGUAGE PLPGSQL;
+
+
+
+
+---------------------------------------------------------------------------------------------------
 -- TEST(TEXT, BOOLEAN): test that a condiition succeeded where evaluating the condition will not raise an exception
 -- This function simply calls VALIDATE(TEXT, BOOLEAN), and raises an exception if the boolean column is false.
 CREATE OR REPLACE FUNCTION managed_code.TEST(P_MSG TEXT, P_TEST BOOLEAN) RETURNS BOOLEAN AS
 $$
 DECLARE
-  MSG TEXT;
-  PASSED BOOLEAN;
+  VALIDATE_RESP JSONB;
 BEGIN
-  SELECT * INTO MSG, PASSED FROM VALIDATE(P_MSG, P_TEST);
+  SELECT VALIDATE(P_MSG, P_TEST) INTO VALIDATE_RESP;
 
-  IF NOT PASSED THEN
-    RAISE EXCEPTION '%', MSG;
+  IF NOT (VALIDATE_RESP #>> '{passed}')::BOOLEAN THEN
+    RAISE EXCEPTION '%', VALIDATE_RESP #>> '{msg}';
   END IF;
 
   RETURN TRUE;
@@ -277,7 +312,7 @@ $$ LANGUAGE PLPGSQL;
 
 
 
----------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------
 -- IIF: A polymorphic function some other vendors have that Postgres lacks
 --   P_EXPR     : A boolean expression
 --   P_TRUE_VAL : value to return if P_EXPR is true
@@ -312,10 +347,10 @@ SELECT *
 
              ,(TRUE , NULL, 'b' , NULL)
              ,(FALSE, NULL, 'b' , 'b' )
-             
+
              ,(TRUE , 'a', NULL , 'a' )
              ,(FALSE, 'a', NULL , NULL)
-             
+
              ,(TRUE , 'a', 'b'  , 'a' )
              ,(FALSE, 'a', 'b'  , 'b' )
            ) AS t (expr, tval, fval, res)
@@ -331,7 +366,7 @@ SELECT *
 -- P_STRS   : The strings to place a separator between
 --
 -- Returns each non-null non-empty string in P_STRS, separated by P_SEP
--- Unlike CONCAT_WS, the nulls and empty strings are removed first, eliminating consecutive separators 
+-- Unlike CONCAT_WS, the nulls and empty strings are removed first, eliminating consecutive separators
 CREATE OR REPLACE FUNCTION managed_code.NEMPTY_WS(P_SEP TEXT, P_STRS VARIADIC TEXT[]) RETURNS TEXT AS
 $$
   SELECT STRING_AGG(str, P_SEP)
@@ -349,7 +384,7 @@ SELECT TEST(msg, NEMPTY_WS('-', VARIADIC args) IS NOT DISTINCT FROM res) nempty_
          ,('NEMPTY_WS must return a'      , ARRAY[NULL, 'a'                                    ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY['a' , NULL                                   ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY[NULL, 'a' , NULL                             ]        , 'a'      )
-         ,('NEMPTY_WS must return a'      , ARRAY[''  , 'a'                                    ]        , 'a'      )     
+         ,('NEMPTY_WS must return a'      , ARRAY[''  , 'a'                                    ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY['a' , ''                                     ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY[''  , 'a' , ''                               ]        , 'a'      )
          ,('NEMPTY_WS must return a'      , ARRAY[NULL, 'a' , ''                               ]        , 'a'      )
@@ -711,13 +746,13 @@ BEGIN
       WHEN V_RMDR < 10 + 26 THEN V_DIGIT = CHR(ASCII('A') + V_RMDR - 10     );
       ELSE                       V_DIGIT = CHR(ASCII('a') + V_RMDR - 10 - 26);
     END CASE;
-    
+
     -- Add digits to the front of the string, modulus gives us the digits from least to most significant
     -- Eg for the relid 123, we get the digits 3,2,1
     V_ID    = V_DIGIT || V_ID;
     V_RELID = V_RELID /  62;
   END LOOP;
-  
+
   RETURN V_ID;
 END;
 $$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
@@ -743,7 +778,7 @@ SELECT DISTINCT * FROM (
            (10_000_000_000           , 'Aukyoa'     ), -- = 10 * 62^5      + (36 + 20) * 62^4     + (36 + 10) * 62^3   + (36 + 24) * 62^2 + (36 + 14) * 62 + 36
                                                        -- = 10 * 916132832 + 56        * 14776336 + 46        * 238328 + 60        * 3844 + 50        * 62 + 36
            (9_223_372_036_854_775_807, 'AzL8n0Y58m7')  -- = 10 * 62^10              + (10 + 26 + 25) * 62^9              + (10 + 11) * 62^8            + 8 * 62^7          + (10 + 26 + 13) * 62^6        + 0 * 62^5      + (10 + 24) * 62^4     + 5 * 62^3   + 8 * 62^2 + (10 + 26 + 12) * 62 + 7
-                                                       -- = 10 * 839299365868340224 + 61             * 13537086546263552 + 21 *        218340105584896 + 8 * 3521614606208 + 49             * 56800235584 + 0 * 916132832 + 34        * 14776336 + 5 * 238328 + 8 * 3844 + 48             * 62 + 7    
+                                                       -- = 10 * 839299365868340224 + 61             * 13537086546263552 + 21 *        218340105584896 + 8 * 3521614606208 + 49             * 56800235584 + 0 * 916132832 + 34        * 14776336 + 5 * 238328 + 8 * 3844 + 48             * 62 + 7
         ) AS t(r, i)
 ) t;
 ---------------------------------------------------------------------------------------------------
@@ -753,7 +788,7 @@ SELECT DISTINCT * FROM (
 
 ---------------------------------------------------------------------------------------------------
 -- ID_TO_RELID converts a base 62 string with a maximum of 11 chars to a BIGINT
--- Maximum ID is AzL8n0Y58m7 -> signed BIGINT value is 9_223_372_036_854_775_807 
+-- Maximum ID is AzL8n0Y58m7 -> signed BIGINT value is 9_223_372_036_854_775_807
 --               12345678901
 -- Raises an exception if P_ID <= 0, since valid ids start at 1
 -- A NULL is returns NULL
@@ -765,17 +800,17 @@ DECLARE
   C_LPAD_ID  CONSTANT CHAR(11) := LPAD(P_ID, 11, '00000000000') COLLATE "C";
   C_LPAD_MIN CONSTANT CHAR(11) :=                '00000000001'  COLLATE "C";
   C_LPAD_MAX CONSTANT CHAR(11) :=                'AzL8n0Y58m7'  COLLATE "C";
-  
+
   C_0        CONSTANT INT := ASCII('0');
   C_9        CONSTANT INT := ASCII('9');
   C_CAP_A    CONSTANT INT := ASCII('A');
   C_CAP_Z    CONSTANT INT := ASCII('Z');
   C_LIT_A    CONSTANT INT := ASCII('a');
   C_LIT_Z    CONSTANT INT := ASCII('z');
-  
+
   C_COUNT_DIGITS           CONSTANT INT := 10;
-  C_COUNT_DIGITS_AND_LOWER CONSTANT INT := C_COUNT_DIGITS + 26; 
-  
+  C_COUNT_DIGITS_AND_LOWER CONSTANT INT := C_COUNT_DIGITS + 26;
+
   V_ID          VARCHAR(11) := P_ID;
   V_DIGIT       CHAR;
   V_ASCII_DIGIT INT;
@@ -785,7 +820,7 @@ BEGIN
   IF LENGTH(V_ID) = 0 THEN
     RAISE EXCEPTION 'P_ID cannot be empty';
   END IF;
-  
+
   -- P_ID must be >= '1' and <= 'AzL8n0Y58m7'
   IF (C_LPAD_ID < C_LPAD_MIN) OR (C_LPAD_ID > C_LPAD_MAX) THEN
     RAISE EXCEPTION 'P_ID must be in the range [1 .. AzL8n0Y58m7]';
@@ -793,10 +828,10 @@ BEGIN
 
   FOREACH V_DIGIT IN ARRAY REGEXP_SPLIT_TO_ARRAY(V_ID, '')
   LOOP
-    -- Get the ASCII numeric value to guarantee an ASCII comparison 
+    -- Get the ASCII numeric value to guarantee an ASCII comparison
     V_ASCII_DIGIT = ASCII(V_DIGIT);
     V_RELID = V_RELID * 62;
-    
+
     CASE
       WHEN V_ASCII_DIGIT BETWEEN C_0     AND C_9     THEN V_RELID = V_RELID +                            (V_ASCII_DIGIT - C_0);
       WHEN V_ASCII_DIGIT BETWEEN C_CAP_A AND C_CAP_Z THEN V_RELID = V_RELID + C_COUNT_DIGITS +           (V_ASCII_DIGIT - C_CAP_A);
@@ -804,7 +839,7 @@ BEGIN
       ELSE RAISE EXCEPTION 'P_ID digit ''%'' (ASCII 0x%) is invalid: only characters in the ranges of 0..9, A..Z, and a..z are valid', V_DIGIT, UPPER(TO_HEX(V_ASCII_DIGIT));
     END CASE;
   END LOOP;
-  
+
   RETURN V_RELID;
 END;
 $$ LANGUAGE PLPGSQL IMMUTABLE LEAKPROOF STRICT PARALLEL SAFE;
@@ -835,7 +870,7 @@ SELECT DISTINCT * FROM (
            ,('z'          , 10 + 26 + 25             )
            ,('10'         , 10 + 26 + 26             )
            ,('Aukyoa'     , 10_000_000_000           )
-           ,('AzL8n0Y58m7', 9_223_372_036_854_775_807)    
+           ,('AzL8n0Y58m7', 9_223_372_036_854_775_807)
         ) AS t(i, r)
 ) t;
 
@@ -995,11 +1030,11 @@ $$
  ,VALIDATE_PARAMS AS (
     SELECT '{}'::JSONB
            || CASE WHEN P_OBJ_TYPE != 'object' THEN '{"P_OBJ"   : "must be an object"}'
-                   WHEN P_OBJ      =  '{}'     then '{"P_OBJ"   : "must have at least one key"}'
+                   WHEN P_OBJ      =  '{}'     THEN '{"P_OBJ"   : "must have at least one key"}'
                    ELSE '{}'
               END::JSONB
            || CASE WHEN P_SCHEMA_TYPE != 'object' THEN '{"P_SCHEMA"   : "must be an object"}'
-                   WHEN P_SCHEMA      =  '{}'     then '{"P_SCHEMA"   : "must have at least one key"}'
+                   WHEN P_SCHEMA      =  '{}'     THEN '{"P_SCHEMA"   : "must have at least one key"}'
                    ELSE '{}'
               END::JSONB
            AS PARAM_ERRORS
@@ -1130,15 +1165,15 @@ $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 -- Test VALIDATE_JSONB_SCHEMA(NULL P_OBJ) returns {"P_OBJ" :"cannot be null"}
 SELECT TEST(ERROR_MSG, VALIDATE_JSONB_SCHEMA(P_OBJ::JSONB, P_SCHEMA::JSONB, P_REQD::TEXT[]) = RES::JSONB)
   FROM (VALUES
-          ('P_OBJ cannot be null'      , NULL                     , '{"firstName": "string"}', NULL, '{"P_OBJ"   : "must be an object"}' )
-         ,('P_SCHEMA cannot be null'   , '{"firstName": "string"}', NULL                     , NULL, '{"P_SCHEMA": "must be an object"}' )
-         ,('P_OBJ must be an object'   , '1'                      , '{"firstName": "string"}', NULL, '{"P_OBJ"   : "must be an object"}' )
-         ,('P_SCHEMA must be an object', '{"firstName": "string"}', '1'                      , NULL, '{"P_SCHEMA": "must be an object"}' )
-         ,('P_OBJ cannot be empty'     , '{}'                     , '{"firstName": "string"}', NULL, '{"P_OBJ"   : "must have at least one key"}')
-         ,('P_SCHEMA cannot be empty'  , '{"firstName": "string"}', '{}'                     , NULL, '{"P_SCHEMA": "must have at least one key"}')
-         ,('firstName expected string, not number'  , '{"firstName": 1}', '{"firstName": "string"}', NULL, '{"firstName": "Expected string, not number"}')
-         ,('created expected datetime, not bob'  , '{"created": "Bob"}', '{"created": "datetime"}', NULL, '{"created": "Expected datetime, not Bob"}')
-         ,('birthDate expected date, not alice'  , '{"birthDate": "Alice"}', '{"birthDate": "date"}', NULL, '{"birthDate": "Expected date, not Alice"}')
-         ,('firstName required'  , '{"firstName": null}', '{"firstName": "string"}', ARRAY['firstName'], '{"firstName": "Required"}')
-         ,('furstName not expected'  , '{"furstName": "Bob"}', '{"firstName": "string"}', NULL, '{"furstName": "Unexpected"}')
+          ('P_OBJ cannot be null'                 , NULL                     , '{"firstName": "string"}', NULL              , '{"P_OBJ"   : "must be an object"}' )
+         ,('P_SCHEMA cannot be null'              , '{"firstName": "string"}', NULL                     , NULL              , '{"P_SCHEMA": "must be an object"}' )
+         ,('P_OBJ must be an object'              , '1'                      , '{"firstName": "string"}', NULL              , '{"P_OBJ"   : "must be an object"}' )
+         ,('P_SCHEMA must be an object'           , '{"firstName": "string"}', '1'                      , NULL              , '{"P_SCHEMA": "must be an object"}' )
+         ,('P_OBJ cannot be empty'                , '{}'                     , '{"firstName": "string"}', NULL              , '{"P_OBJ"   : "must have at least one key"}')
+         ,('P_SCHEMA cannot be empty'             , '{"firstName": "string"}', '{}'                     , NULL              , '{"P_SCHEMA": "must have at least one key"}')
+         ,('firstName expected string, not number', '{"firstName": 1}'       , '{"firstName": "string"}', NULL              , '{"firstName": "Expected string, not number"}')
+         ,('created expected datetime, not bob'   , '{"created": "Bob"}'     , '{"created": "datetime"}', NULL              , '{"created": "Expected datetime, not Bob"}')
+         ,('birthDate expected date, not alice'   , '{"birthDate": "Alice"}' , '{"birthDate": "date"}'  , NULL              , '{"birthDate": "Expected date, not Alice"}')
+         ,('firstName required'                   , '{"firstName": null}'    , '{"firstName": "string"}', ARRAY['firstName'], '{"firstName": "Required"}')
+         ,('furstName not expected'               , '{"furstName": "Bob"}'   , '{"firstName": "string"}', NULL              , '{"furstName": "Unexpected"}')
        ) AS t(ERROR_MSG, P_OBJ, P_SCHEMA, P_REQD, RES);
