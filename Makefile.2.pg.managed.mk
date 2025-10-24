@@ -7,7 +7,7 @@ include Makefile.common.mk
 # Postgres managed image ref - see https://hub.docker.com/_/postgres for tags
 # This is the managed image that in the cloud would get created as a managed database
 PG_MANAGED_IMAGE_NAME := postgres
-PG_MANAGED_IMAGE_VER  := 17
+PG_MANAGED_IMAGE_VER  := 17.6
 PG_MANAGED_IMAGE_REF  := $(PG_MANAGED_IMAGE_NAME):$(PG_MANAGED_IMAGE_VER)
 
 # Generated managed image
@@ -41,12 +41,12 @@ pg-managed-oci: pg-managed-oci-clean pg-managed-oci-pull pg-managed-oci-build pg
 # The only thing not removed is the base image needed to build the code
 .PHONY: pg-managed-oci-clean
 pg-managed-oci-clean:
-	echo ">>> Cleaning previously generated Postgres OCI images and containers"
+	echo ">>> Cleaning previously generated Postgres OCI images and containers"; \
 	for id in `podman ps -a --format '{{.ID}} {{.Image}}' | grep $(PG_MANAGED_DEPLOY_REF) | awk '{print $$1}'`; \
 	do \
 	  echo "Removing container $$id"; \
 	  podman rm -f "$$id"; \
-	done
+	done; \
 	for id in `podman image ls --format '{{.ID}} {{.Repository}}:{{.Tag}}' | grep $(PG_MANAGED_DEPLOY_REF) | awk '{print $$1}'`; \
 	do \
 	  echo "Removing image $$id"; \
@@ -56,7 +56,7 @@ pg-managed-oci-clean:
 # Pull oci postgres images
 .PHONY: pg-managed-oci-pull
 pg-managed-oci-pull:
-	echo ">>> Checking if postgres images need to be pulled"
+	echo ">>> Checking if postgres images need to be pulled"; \
 	[ "`podman image list --format "{{.ID}}" --filter "reference=$(PG_MANAGED_IMAGE_REF)" | wc -l`" -gt 0 ] || { \
 	  echo "Pulling compile image"; \
 	  podman pull $(PG_MANAGED_IMAGE_REF); \
@@ -65,15 +65,15 @@ pg-managed-oci-pull:
 # Always build oci/.Containerfile-pg-managed in case args have changed
 .PHONY: oci/.Containerfile-pg-managed
 oci/.Containerfile-pg-managed: oci/Containerfile-pg-managed.in
-	echo ">>> Generating $@"
-	cp $< $@
+	echo ">>> Generating $@"; \
+	cp $< $@; \
 	if [ -n "$(PG_MANAGED_SRC_ENV_ARG)" ]; then echo "Include $(PG_MANAGED_SRC_ENV_DIR)"; sed 's,#COPY,COPY,' $@ > $@.tmp; mv $@.tmp $@; fi
 
 # Build oci image
 # Pruning removes the unnamed initial stage images of multi stage builds
 .PHONY: pg-managed-oci-build
 pg-managed-oci-build: oci/.Containerfile-pg-managed
-	echo ">>> Building postgres managed image"
+	echo ">>> Building postgres managed image"; \
 	podman build \
 	  --build-arg "PG_MANAGED_IMAGE_REF=$(PG_MANAGED_IMAGE_REF)" \
 	  --build-arg "PG_MANAGED_EXEC_PASS=$(PG_MANAGED_EXEC_PASS)" \
@@ -81,7 +81,7 @@ pg-managed-oci-build: oci/.Containerfile-pg-managed
 	  $(PG_MANAGED_SRC_ENV_ARG) \
 	  -f $< \
 	  -t $(PG_MANAGED_DEPLOY_REF) \
-	  db/postgres/managed
+	  db/postgres/managed; \
 	podman system prune -f
 
 # Run oci image
@@ -98,8 +98,8 @@ pg-managed-oci-run:
 	  -e POSTGRES_DB=$(PG_MANAGED_DB_NAME) \
 	  -e POSTGRES_PASSWORD="$(PG_MANAGED_PASS)" \
 	  -p 5432:5432 \
-	  $(PG_MANAGED_DEPLOY_REF)
-	podman start $(PG_MANAGED_DEPLOY_NAME)
+	  $(PG_MANAGED_DEPLOY_REF); \
+	podman start $(PG_MANAGED_DEPLOY_NAME); \
 	while true; do \
 	  sleep 1; \
 	  printf "."; \
@@ -137,17 +137,17 @@ pg-managed-oci-bash:
 
 .PHONY: pg-managed-vars
 pg-managed-vars:
-	echo ">>> Displaying pg-managed variables"
-	echo "PG_MANAGED_IMAGE_NAME  = $(PG_MANAGED_IMAGE_NAME)"
-	echo "PG_MANAGED_IMAGE_VER   = $(PG_MANAGED_IMAGE_VER)"
-	echo "PG_MANAGED_IMAGE_REF   = $(PG_MANAGED_IMAGE_REF)"
-	echo "PG_MANAGED_DEPLOY_NAME = $(PG_MANAGED_DEPLOY_NAME)"
-	echo "PG_MANAGED_DEPLOY_VER  = $(PG_MANAGED_DEPLOY_VER)"
-	echo "PG_MANAGED_DEPLOY_REF  = $(PG_MANAGED_DEPLOY_REF)"
-	echo "PG_MANAGED_SRC_ENV     = $(PG_MANAGED_SRC_ENV)"
-	echo "PG_MANAGED_SRC_ENV_DIR = $(PG_MANAGED_SRC_ENV_DIR)"
-	echo "PG_MANAGED_SRC_ENV_ARG = $(PG_MANAGED_SRC_ENV_ARG)"
-	echo "PG_MANAGED_DB_NAME     = $(PG_MANAGED_DB_NAME)"
-	echo "PG_MANAGED_PASS        = $(PG_MANAGED_PASS)"
-	echo "PG_MANAGED_EXEC_USER   = $(PG_MANAGED_EXEC_USER)"
+	echo ">>> Displaying pg-managed variables"; \
+	echo "PG_MANAGED_IMAGE_NAME  = $(PG_MANAGED_IMAGE_NAME)"; \
+	echo "PG_MANAGED_IMAGE_VER   = $(PG_MANAGED_IMAGE_VER)"; \
+	echo "PG_MANAGED_IMAGE_REF   = $(PG_MANAGED_IMAGE_REF)"; \
+	echo "PG_MANAGED_DEPLOY_NAME = $(PG_MANAGED_DEPLOY_NAME)"; \
+	echo "PG_MANAGED_DEPLOY_VER  = $(PG_MANAGED_DEPLOY_VER)"; \
+	echo "PG_MANAGED_DEPLOY_REF  = $(PG_MANAGED_DEPLOY_REF)"; \
+	echo "PG_MANAGED_SRC_ENV     = $(PG_MANAGED_SRC_ENV)"; \
+	echo "PG_MANAGED_SRC_ENV_DIR = $(PG_MANAGED_SRC_ENV_DIR)"; \
+	echo "PG_MANAGED_SRC_ENV_ARG = $(PG_MANAGED_SRC_ENV_ARG)"; \
+	echo "PG_MANAGED_DB_NAME     = $(PG_MANAGED_DB_NAME)"; \
+	echo "PG_MANAGED_PASS        = $(PG_MANAGED_PASS)"; \
+	echo "PG_MANAGED_EXEC_USER   = $(PG_MANAGED_EXEC_USER)"; \
 	echo "PG_MANAGED_EXEC_PASS   = $(PG_MANAGED_EXEC_PASS)"

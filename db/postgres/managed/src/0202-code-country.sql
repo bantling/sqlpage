@@ -1,4 +1,47 @@
 ---------------------------------------------------------------------------------------------------
+-- SET_COUNTRIES(JSONB):
+--
+-- Receives a JSONB ARRAY of countries and their regions (null or []).
+-- Each country received is inserted or updated (eg, name changes).
+-- Updates require the data to contain at least one unique key (relid, code_2, code_3, or name)
+---------------------------------------------------------------------------------------------------
+--CREATE OR REPLACE FUNCTION managed_code.SET_COUNTRIES(P_DATA JSONB) RETURNS JSONB AS
+--$$
+--    WITH ADJ_PARAMS AS (
+--      SELECT P_DATA
+--    )
+--   ,VALID AS (
+--      SELECT VALIDATE_JSONB_SCHEMA(
+--               P_DATA
+--              ,$$ {
+--                 -- BASE
+--                 "relid"      : "number"
+--                ,"version"    : "number"
+--                ,"description": "string"
+--                ,"terms"      : "string"
+--                ,"extra"      : "string"
+--                ,"created"    : "datetime"
+--                ,"modified"   : "datetime"
+--                 -- COUNTRY
+--                ,"name"               : "string"
+--                ,"code_2"             : "string"
+--                ,"code_3"             : "string"
+--                ,"has_regions"        : "boolean"
+--                ,"has_mailing_code"   : "boolean"
+--                ,"mailing_code_match" : "string"
+--                ,"mailing_code_format": "string"
+--                ,"ord"                : "int"
+--               } $$
+--             )
+--        FROM ADJ_PARAMS
+--    )
+--    SELECT * FROM VALID;
+--$$ LANGUAGE SQL SECURITY DEFINER;
+
+
+
+
+---------------------------------------------------------------------------------------------------
 -- GET_COUNTRIES(VARCHAR(3)...):
 --
 -- Returns a JSONB ARRAY of countries and their regions (null or []).

@@ -15,10 +15,10 @@ podman-path:
 	  exit 1; \
 	}
 
-# Ensure podman has been initialzed
+# Ensure podman has been initialized
 .PHONY: podman-machine-init
 podman-machine-init:
-	echo ">>> Checking of podman has been intialized"
+	echo ">>> Checking of podman has been intialized"; \
 	[ "`podman machine list --format "{{.Name}}" | wc -l`" -ge 1 ] || { \
 	  echo "Initializing podman"; \
 	  podman machine init; \
@@ -27,7 +27,7 @@ podman-machine-init:
 # Ensure podman has been started
 .PHONY: podman-machine-start
 podman-machine-start:
-	echo ">>> Checking if podman has been started"
+	echo ">>> Checking if podman has been started"; \
 	[ "`podman machine list --format "{{.LastUp}}" | grep -i running | wc -l`" -ge 1 ] || { \
 	  echo "Starting podman"; \
 	  podman machine start; \

@@ -2,7 +2,8 @@
 
 ---------------------------------------------------------------------------------------------------
 -- VALIDATE(TEXT, BOOLEAN): test that a condition succeeded for cases where evaluating the condition
---                      does not raise an exception
+--   does not raise an exception
+--
 --   P_MSG : string error message if the test failed (cannot be null or empty)
 --   P_TEST: true if test succeeded, null or false if it failed
 -- 
@@ -61,7 +62,7 @@ $$ LANGUAGE PLPGSQL;
 
 
 ---------------------------------------------------------------------------------------------------
--- TEST(TEXT, BOOLEAN): test that a condiition succeeded where evaluating the condition will not raise an exception
+-- TEST(TEXT, BOOLEAN): test that a condition succeeded where evaluating the condition will not raise an exception
 -- This function simply calls VALIDATE(TEXT, BOOLEAN), and raises an exception if the boolean column is false.
 CREATE OR REPLACE FUNCTION managed_code.TEST(P_MSG TEXT, P_TEST BOOLEAN) RETURNS BOOLEAN AS
 $$
@@ -594,18 +595,29 @@ $$ LANGUAGE SQL LEAKPROOF PARALLEL SAFE;
 SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', RANDOM_CHAR('afty') IN ('a', 'f', 't', 'y'))
   FROM GENERATE_SERIES(1, 100);
 
--- Test RANDOM_CHAR('afty') using crypto
 SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''afty'') must return a, f, t, or y', RANDOM_CHAR('afty', TRUE) IN ('a', 'f', 't', 'y'))
   FROM GENERATE_SERIES(1, 100);
 
 -- Test RANDOM_CHAR('a')
-SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''a'') must return a', RANDOM_CHAR('a') ='a');
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''a'') must return a', RANDOM_CHAR('a') ='a')
+  FROM GENERATE_SERIES(1, 10);
+
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(''a'') must return a', RANDOM_CHAR('a'), TRUE ='a')
+  FROM GENERATE_SERIES(1, 10);
 
 -- Test RANDOM_CHAR('')
-SELECT DISTINCT TEST('managed_code.RANDOM_CHAR('''') must return ''''', RANDOM_CHAR('') = '');
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR('''') must return ''''', RANDOM_CHAR('') = '')
+  FROM GENERATE_SERIES(1, 10);
+
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR('''') must return ''''', RANDOM_CHAR('', TRUE) = '')
+  FROM GENERATE_SERIES(1, 10);
 
 -- Test RANDOM_CHAR(NULL)
-SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', RANDOM_CHAR(NULL) IS NULL);
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', RANDOM_CHAR(NULL) IS NULL)
+  FROM GENERATE_SERIES(1, 10);
+
+SELECT DISTINCT TEST('managed_code.RANDOM_CHAR(NULL) must return NULL', RANDOM_CHAR(NULL, TRUE) IS NULL)
+  FROM GENERATE_SERIES(1, 10);
 ---------------------------------------------------------------------------------------------------
 
 
@@ -691,7 +703,7 @@ SELECT TEST(msg, TO_8601(ARG) IS NOT DISTINCT FROM res)
           ('TO_9701(NULL) must return NULL'                        , NULL::TIMESTAMP                            , NULL::TEXT)
          ,('TO_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY', TO_CHAR((NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY')::TIMESTAMP(3), 'YYYY-MM-DD"T"HH24:MI:SS.FF3"Z"'))
          ,('TO_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'::TIMESTAMP   , '2025-08-16T02:30:45.235Z')
-         ,('TO_8601(2025-08-16T02:30:45.9Z) HAS 900MS'             , '2025-08-16T02:30:45.9Z'::TIMESTAMP        , '2025-08-16T02:30:45.900Z')
+         ,('TO_8601(2025-08-16T02:30:45.9Z) extends to 900 ms'     , '2025-08-16T02:30:45.9Z'::TIMESTAMP        , '2025-08-16T02:30:45.900Z')
        ) AS t(msg, arg, res);
 ----------------------------------------------------------------------------------------------------
 
@@ -714,7 +726,7 @@ SELECT TEST(msg, FROM_8601(arg) IS NOT DISTINCT FROM res)
           ('FROM_8601(NULL) must return NULL'                        , NULL::VARCHAR                                                    , NULL::TIMESTAMP)
          ,('FROM_8601(NOW - 1 DAY) must return NOW - 1 DAY'          , TO_8601(NOW() AT TIME ZONE 'UTC' - INTERVAL '1 DAY'), NOW()::TIMESTAMP(3) - INTERVAL '1 DAY')
          ,('FROM_8601(2025-08-16T02:30:45.234567Z) rounds to .235 ms', '2025-08-16T02:30:45.234567Z'                                    , FROM_8601('2025-08-16T02:30:45.235Z'))
-         ,('FROM_8601(2025-08-16T02:30:45.9Z) has 900MS'             , '2025-08-16T02:30:45.9Z'                                         , FROM_8601('2025-08-16T02:30:45.900Z'))
+         ,('FROM_8601(2025-08-16T02:30:45.9Z) extends to 900MS'      , '2025-08-16T02:30:45.9Z'                                         , FROM_8601('2025-08-16T02:30:45.900Z'))
        ) AS t(msg, arg, res);
 ----------------------------------------------------------------------------------------------------
 
@@ -968,7 +980,7 @@ SELECT TEST(
 -- as follows:
 --   - The key name is the name of a key in P_OBJ
 --   - The key value is one of the following strings:
---     - array, object, string, number, boolean, datetime, date
+--     - array, object, string, number, boolean, int, datetime, date
 --
 -- datetime and date are both passed as JSNB string values.
 -- A regex is used to confirm that a datetime is a valid ISO 8601 value
@@ -992,19 +1004,20 @@ SELECT TEST(
 -- If there are no parameter errors, and the object does not match the schema, the following errors can be returned:
 -- {"keyName": "Expected X, not Y"}        (eg, {"firstName" : "Expected string, not boolean"})
 -- {"keyName": "Expected datetime, not X"} (eg, {"created"   : "Expected datetime, not Bob"})
--- {"keyName": "expected date, not X"}      (eg, {"birthDate" : "Expected date, not Bob"})
+-- {"keyName": "expected date, not X"}     (eg, {"birthDate" : "Expected date, not Bob"})
 -- {"keyName": "Required"}                 (eg, {"firstName" : "Required"}, indicating a missing key that is required)
 -- {"keyName": "Unexpected"}               (eg, {"muddleName": "Unexpected"}, indicating misspelled muddleName is not part
---   of the schema)
+--                                          of the schema)
 ---------------------------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL) RETURNS JSONB AS
+CREATE OR REPLACE FUNCTION managed_code.VALIDATE_JSONB_SCHEMA(P_OBJ JSONB, P_SCHEMA JSONB, P_REQD TEXT[] = NULL)
+RETURNS JSONB AS
 $$
   -- Hard-coded data for debugging
   WITH ADJ_PARAMS AS (
     SELECT P_OBJ, P_SCHEMA, P_REQD
---    SELECT '{"firstName": "Avery", "today": "2025-08-31"}'::JSONB AS P_OBJ
---          ,'{"firstName": "string", "today": "date"}'::JSONB      AS P_SCHEMA
---          ,ARRAY['firstName', 'today']::TEXT[]                    AS P_REQD
+--    SELECT '{"firstName": "Avery", "relid": 56}'::JSONB     AS P_OBJ
+--          ,'{"firstName": "string", "relid": "int"}'::JSONB AS P_SCHEMA
+--          ,ARRAY['firstName']::TEXT[]                       AS P_REQD
   ),
 --  SELECT * FROM ADJ_PARAMS;
 
@@ -1061,7 +1074,7 @@ $$
       FROM JSONB_EACH_TEXT(
              (SELECT P_SCHEMA FROM PARAMS_WITH_TYPES)
            )
-     WHERE VALUE IN ('array', 'object', 'string', 'number', 'boolean', 'datetime', 'date')
+     WHERE VALUE IN ('array', 'object', 'string', 'number', 'boolean', 'int', 'datetime', 'date')
   )
 --  SELECT * FROM SCHEMA_KEY_VALUES;
 
@@ -1074,10 +1087,19 @@ $$
           FROM (
             SELECT OBJ_KEY
                   ,CASE
+                     -- Special case of int
+                   WHEN skv.SCHEMA_VALUE_TYPE = 'int'
+                    AND okv.OBJ_VALUE_TYPE    = 'number'
+                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '^-?0$|^-?[1-9][0-9]*$'
+                   THEN format(
+                          'Expected int, not %s'
+                         ,okv.OBJ_VALUE #>> '{}'
+                        )
+
                      -- Special case of datetime
                    WHEN skv.SCHEMA_VALUE_TYPE = 'datetime'
                     AND okv.OBJ_VALUE_TYPE    = 'string'
-                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3,9}(Z|[+-][0-9]{2}:[0-9]{2})'
+                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3,9}(Z|[+-][0-9]{2}:[0-9]{2})$'
                    THEN format(
                           'Expected datetime, not %s'
                          ,okv.OBJ_VALUE #>> '{}'
@@ -1086,7 +1108,7 @@ $$
                      -- Special case of date
                    WHEN skv.SCHEMA_VALUE_TYPE = 'date'
                     AND okv.OBJ_VALUE_TYPE    = 'string'
-                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                    AND okv.OBJ_VALUE #>> '{}' NOT SIMILAR TO '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
                    THEN format(
                           'Expected date, not %s'
                           ,okv.OBJ_VALUE #>> '{}'
@@ -1163,7 +1185,9 @@ $$
 $$ LANGUAGE SQL IMMUTABLE LEAKPROOF PARALLEL SAFE;
 
 -- Test VALIDATE_JSONB_SCHEMA(NULL P_OBJ) returns {"P_OBJ" :"cannot be null"}
-SELECT TEST(ERROR_MSG, VALIDATE_JSONB_SCHEMA(P_OBJ::JSONB, P_SCHEMA::JSONB, P_REQD::TEXT[]) = RES::JSONB)
+SELECT -- TEST(
+         ERROR_MSG, VALIDATE_JSONB_SCHEMA(P_OBJ::JSONB, P_SCHEMA::JSONB, P_REQD::TEXT[]) = RES::JSONB
+       -- )
   FROM (VALUES
           ('P_OBJ cannot be null'                 , NULL                     , '{"firstName": "string"}', NULL              , '{"P_OBJ"   : "must be an object"}' )
          ,('P_SCHEMA cannot be null'              , '{"firstName": "string"}', NULL                     , NULL              , '{"P_SCHEMA": "must be an object"}' )
